@@ -16,6 +16,8 @@
 
 #include <ads1115rpi.h>
 #include <mcp23x17rpi.h>
+#include <pca9635rpi.h>
+
 
 using namespace std;
 
@@ -26,6 +28,12 @@ int ADS1115_HANDLE;
 
 float vRef = 5.0;
 int   gain = 4;
+
+int pca9635Handle = -1;
+int pca9635Address = 0x1f;
+
+int rTrack = 15;
+int lTrack = 14;
 
 int mcp23x17_handle = -1;
 int mcp23x17_address = 0x20;
@@ -43,6 +51,8 @@ MCP23x17_GPIO lTrackReverse = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB,
 MCP23x17_GPIO lTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 1);
 MCP23x17_GPIO rTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 2);
 MCP23x17_GPIO rTrackReverse = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 3);
+
+enum directionType { stopped, forward, reverse, turnLeft, turnRight, goStraight, undetermined};
 
 
 
@@ -279,7 +289,44 @@ void allStop() {
   mcp23x17_digitalWrite(rTrackReverse, LOW);
 }
 
-enum directionType { stopped, forward, reverse, undetermined};
+
+bool pca9635Init() {
+
+  pca9635Handle = wiringPiI2CSetup(pca9635Address);
+  if (pca9635Handle < 0) {
+      fprintf(stderr,"Cannot initialize pca9635 on address 0x%02x\n",pca9635Address);
+      return false;
+  }
+
+
+  int mode1 = 0x01;
+  int mode2 = 0x04;
+
+  wiringPiI2CWriteReg8(pca9635Handle, 0x00, mode1);
+  wiringPiI2CWriteReg8(pca9635Handle, 0x01, mode2);
+
+  wiringPiI2CWriteReg8(pca9635Handle, 0x14, 0xaa);
+  wiringPiI2CWriteReg8(pca9635Handle, 0x15, 0xaa);
+  wiringPiI2CWriteReg8(pca9635Handle, 0x16, 0xaa);
+  wiringPiI2CWriteReg8(pca9635Handle, 0x17, 0xaa);
+  delay(1);  // mandatroy 500 us delay when enabling pca9635 oscillator 
+
+  int cmode1 = wiringPiI2CReadReg8(pca9635Handle, 0x00);
+  int cmode2 = wiringPiI2CReadReg8(pca9635Handle, 0x01);
+
+  if (cmode1 != mode1 || cmode2 != mode2) {
+      fprintf(stderr,"pca9635 initialization failed\n");
+      return false;
+  }
+
+
+  for (int led = 0; led < 16; ++led) {
+      // pca9635DigitalWrite(pca9635Handle, led, 1);
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 0);
+  }
+
+  return true;
+}
 
 int main(int argc, char **argv)
 {  
@@ -291,15 +338,22 @@ int main(int argc, char **argv)
     return 1;
   }
 
+  printf("use -h to get help on command line options\n");
+  printf("accessing ads1115 chip on i2c address 0x%02x\n", ADS1115_ADDRESS);
+  ADS1115_HANDLE = getADS1115Handle(ADS1115_ADDRESS);
+
   mcp23x17_handle = mcp23x17_setup(0, mcp23x17_address, mcp23x17_inta_pin, mcp23x17_intb_pin);
   if (mcp23x17_handle < 0) {
       fprintf(stderr, "mcp23017 could not be initialized\n");
       return 9;
   }
 
-  printf("use -h to get help on command line options\n");
-  printf("accessing ads1115 chip on i2c address 0x%02x\n", ADS1115_ADDRESS);
-  ADS1115_HANDLE = getADS1115Handle(ADS1115_ADDRESS);
+  if (!pca9635Init()) {
+    return 2;
+  }
+
+
+
 
 
 // o = operation mode
@@ -341,6 +395,7 @@ int main(int argc, char **argv)
 
   float volts[4]={0,0,0,0};
   directionType direction=undetermined;
+  directionType trackAction=goStraight;
 
   while (true) {
     long long now=currentTimeMillis();
@@ -422,6 +477,37 @@ int main(int argc, char **argv)
           printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
             now, volts[0], volts[1], volts[2], volts[3], notes);
           allStop();
+        }
+      }
+
+      if (volts[xThrottle]>xMiddle+xResolution) {         // turn right
+        if (trackAction!=turnRight) {
+          trackAction=turnRight;
+          const char *notes = "turn right";
+          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
+            now, volts[0], volts[1], volts[2], volts[3], notes);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 255);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 0);
+        }
+      } else if (volts[xThrottle]<xMiddle-xResolution) {  // turn left
+        if (trackAction!=turnLeft) {
+          trackAction=turnLeft;
+          const char *notes = "turn left";
+          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
+            now, volts[0], volts[1], volts[2], volts[3], notes);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 255);
+
+          printf("volts[x]: %6.4f \n",volts[xThrottle]);
+          printf("xMiddle:  %6.4f \n",xMiddle);
+          printf("xTarget:  %6.4f \n",xMiddle-xResolution);
+          // exit(2);
+        }
+      } else {                                            // go straight
+        if (trackAction!=goStraight) {
+          trackAction=goStraight;
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 0);
         }
       }
     }
