@@ -40,8 +40,8 @@ int mcp23x17_address = 0x20;
 int mcp23x17_inta_pin = 2;
 int mcp23x17_intb_pin = 3;
 
-int xChannel=1;
-int yChannel=0;
+int xChannel=0;
+int yChannel=1;
 
 int xThrottle=0;
 int yThrottle=1;
@@ -225,6 +225,9 @@ int calibrate() {
   yDelta=max(yDelta,maxThrottle[yThrottle].delta1);
   yDelta=max(yDelta,maxThrottle[yThrottle].delta2);
 
+  xDelta = abs(maxThrottle[xThrottle].avg - minThrottle[xThrottle].avg)/4;
+  yDelta = abs(maxThrottle[yThrottle].avg - minThrottle[yThrottle].avg)/4;
+
   float xMiddle = idleThrottle[xThrottle].avg;
   float yMiddle = idleThrottle[yThrottle].avg;
 
@@ -272,8 +275,8 @@ void readCalibration() {
   fscanf(calibrationFile,"throttle-resolution,%f,%f\n",&xDelta,&yDelta);
   fscanf(calibrationFile,"throttle-center,%f,%f\n",&xMiddle,&yMiddle);
 
-  xResolution = xDelta + (xDelta * 2.0);
-  yResolution = yDelta + (yDelta * 2.0);
+  xResolution = xDelta + (xDelta * 0.1);
+  yResolution = yDelta + (yDelta * 0.1);
 
   printf("calibration:\n");  
   printf("xDelta = %.4f; yDelta=%.4f\n",xDelta, yDelta);
@@ -486,8 +489,8 @@ int main(int argc, char **argv)
           const char *notes = "turn right";
           printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
             now, volts[0], volts[1], volts[2], volts[3], notes);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 255);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 255);
         }
       } else if (volts[xThrottle]<xMiddle-xResolution) {  // turn left
         if (trackAction!=turnLeft) {
@@ -495,11 +498,11 @@ int main(int argc, char **argv)
           const char *notes = "turn left";
           printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
             now, volts[0], volts[1], volts[2], volts[3], notes);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 0);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 255);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 255);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 0);
 
           printf("volts[x]: %6.4f \n",volts[xThrottle]);
-          printf("xMiddle:  %6.4f \n",xMiddle);
+          printf("xMiddle:  %6.4f %6.4f\n",xMiddle, xResolution);
           printf("xTarget:  %6.4f \n",xMiddle-xResolution);
           // exit(2);
         }
