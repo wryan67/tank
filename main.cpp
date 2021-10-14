@@ -407,10 +407,13 @@ void neopixel_colortest() {
 }
 
 void batteryCheck() {
-  int readCount = 50;
+  int readCount = 100;
+  int displayCount=0;
   while (true) {
+    auto start=currentTimeMillis();
     float totalVolts=0;
     for (int i=0;i<readCount;++i) {
+        usleep(10*1000);
         float volts = 0;
         while (volts<0.390) {
           volts = readVoltageSingleShot(a2dHandle2, batteryChannel, gain);          
@@ -418,6 +421,9 @@ void batteryCheck() {
         totalVolts+=volts;
     }
     float volts=totalVolts/readCount;
+    if (++displayCount%10==0) {
+      logger.info("battery volts: %6.3f", (12.6*volts)/.444);
+    }
     if (volts>0.399) {
       neopixel_setPixel(batteryIndicatorLED, greenColor);
       neopixel_render();
@@ -429,7 +435,7 @@ void batteryCheck() {
     } else {
       neopixel_setPixel(batteryIndicatorLED, redColor);
       neopixel_render();
-      logger.info("battery volts=%6.4f",volts);
+      logger.info("battery volts=%6.4f", (12.6*volts)/.444);
       usleep(100*1000);
       deadBattery=true;
       break;
