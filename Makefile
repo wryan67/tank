@@ -1,16 +1,18 @@
 
 # debugging
-#DEBUG  = -g -O0 -rdynamic
+#DEBUG  = -g -O0 -rdynamic -std=c++17
 # production
-DEBUG = -O2
+DEBUG = -O2 
+
+CFLAGS=-std=c++17 
 
 all:  tank 
 
-LIBS=-lwiringPi -lwiringPiADS1115rpi -lwiringPiPCA9635rpi -lwiringPiMCP23x17rpi
+LIBS=-lm -luuid -pthread -lNeoPixelRPi -lwiringPi -lwiringPiADS1115rpi -lwiringPiPCA9635rpi -lwiringPiMCP23x17rpi -llog4pi 
 
 
 tank: main.cpp 
-	gcc ${DEBUG} ${LIBS} main.cpp -o tank
+	g++ ${CFLAGS} ${DEBUG} ${LIBS} main.cpp -o tank
 
 # mcp23x17_threads.o: mcp23x17_threads.c mcp23x17_threads.h
 # 	gcc ${DEBUG} -c mcp23x17_threads.c 

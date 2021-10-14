@@ -17,17 +17,43 @@
 #include <ads1115rpi.h>
 #include <mcp23x17rpi.h>
 #include <pca9635rpi.h>
+#include <neopixel.h>  
+#include <log4pi.h>
 
 
 using namespace std;
+using namespace common::utility;
 
 bool doCalibration=false;
 
-int ADS1115_ADDRESS=0x48;
-int ADS1115_HANDLE;
+Logger     logger("main");
+
+
+/**************************************
+ * 
+ *  ADS1115   a2d chips
+ * 
+ *************************************/
+
+int ADS1115_ADDRESS1=0x48;
+int ADS1115_ADDRESS2=0x49;
+int a2dHandle1;
+int a2dHandle2;
 
 float vRef = 5.0;
 int   gain = 4;
+
+int xChannel=0;
+int yChannel=1;
+
+int batteryChannel=1;
+
+/**************************************
+ * 
+ *  PCA9635    motor speed controller
+ * 
+ *************************************/
+
 
 int pca9635Handle = -1;
 int pca9635Address = 0x1f;
@@ -35,13 +61,19 @@ int pca9635Address = 0x1f;
 int rTrack = 15;
 int lTrack = 14;
 
+
+/**************************************
+ * 
+ *  MCP23017   motor direction controller
+ * 
+ *************************************/
+
 int mcp23x17_handle = -1;
 int mcp23x17_address = 0x20;
 int mcp23x17_inta_pin = 2;
 int mcp23x17_intb_pin = 3;
 
-int xChannel=0;
-int yChannel=1;
+
 
 int xThrottle=0;
 int yThrottle=1;
@@ -52,17 +84,42 @@ MCP23x17_GPIO lTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB,
 MCP23x17_GPIO rTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 2);
 MCP23x17_GPIO rTrackReverse = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 3);
 
-enum directionType { stopped, forward, reverse, turnLeft, turnRight, goStraight, undetermined};
+enum directionType { stopped, forwardMotion, reverseMotion, turnLeft, turnRight, goStraight, undetermined};
 
 
 
-unsigned long long currentTimeMillis() {
-    struct timeval currentTime;
-    gettimeofday(&currentTime, NULL);
+/**************************************
+ * 
+ *  NeoPixel  battery indicator
+ * 
+ *************************************/
 
-    return (unsigned long long)(currentTime.tv_sec) * 1000 +
-        (unsigned long long)(currentTime.tv_usec) / 1000;
-}
+#define STRIP_TYPE              WS2812_WS2811_STRIP_RGB
+#define TARGET_FREQ             WS2811_TARGET_FREQ
+#define GPIO_PIN                18   // BCM numbering system
+#define DMA                     10   // DMA=Direct Memory Access
+int led_count =                 10;  // number of pixels in your led strip
+                                     // If you have a matrix, you should use
+                                     // the universal display driver as it 
+                                     // supports neopixel matrices and 
+                                     // drawing lines, circles, text, and 
+                                     // even bmp images
+                                     // https://github.com/wryan67/udd_rpi_lib
+
+int  batteryIndicatorLED = 0;
+int  redColor    = 0xff0000;
+int  greenColor  = 0x00ff00;
+int  yellowColor = 0xffff00;
+
+int  batteryPercent;
+bool deadBattery=true;
+
+/**************************************
+ * 
+ *  Subroutines
+ * 
+ *************************************/
+
 
 bool usage() {
     fprintf(stderr, "usage: knobtest [-a address] [-g gain] [-v vRef]\n");
@@ -87,7 +144,7 @@ bool commandLineOptions(int argc, char **argv) {
 	while ((c = getopt(argc, argv, "a:cg:v:")) != -1)
 		switch (c) {
 			case 'a':
-				sscanf(optarg, "%x", &ADS1115_ADDRESS);
+				sscanf(optarg, "%x", &ADS1115_ADDRESS1);
 				break;
       case 'c':
         doCalibration=true;
@@ -156,7 +213,7 @@ void getRange(rangeType range[], const char *message) {
 
     int startTime=currentTimeMillis();
     for (int i=0;i<throttleChannelCount;++i) {
-      float v=readVoltageSingleShot(ADS1115_HANDLE, throttleChannels[i], gain);
+      float v=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
 
       if (v<0.1) {
         fprintf(stderr,"unable to detect joystick, is it on and paired?\n");
@@ -331,6 +388,70 @@ bool pca9635Init() {
   return true;
 }
 
+void neopixel_colortest() {
+    logger.info("moving color:  %6x", redColor);
+    neopixel_setPixel(batteryIndicatorLED, redColor);
+    neopixel_render();
+    delay(500);
+
+    logger.info("braking color: %6x", yellowColor);
+    neopixel_setPixel(batteryIndicatorLED, yellowColor);
+    neopixel_render();
+    delay(500);
+
+    logger.info("stopped color: %6x", greenColor);
+    neopixel_setPixel(batteryIndicatorLED, greenColor);
+    neopixel_render();
+    delay(500);
+}
+
+void batteryCheck() {
+  int readCount = 20;
+  while (true) {
+    float totalVolts=0;
+    for (int i=0;i<readCount;++i) {
+        totalVolts += readVoltageSingleShot(a2dHandle2, batteryChannel, gain);
+    }
+    float volts=totalVolts/readCount;
+    if (volts>0.399) {
+      neopixel_setPixel(batteryIndicatorLED, greenColor);
+      neopixel_render();
+      deadBattery=false;
+    } else if (volts>0.395) {
+      neopixel_setPixel(batteryIndicatorLED, yellowColor);
+      neopixel_render();
+      deadBattery=false;
+    } else {
+      neopixel_setPixel(batteryIndicatorLED, redColor);
+      neopixel_render();
+      deadBattery=true;
+      logger.info("battery volts=%6.4f",volts);
+      break;
+    }
+  }
+}
+
+void neopixel_setup() {
+    int ledType = WS2811_STRIP_RGB;
+    int ret=neopixel_init(ledType, WS2811_TARGET_FREQ, DMA, GPIO_PIN, led_count+10);
+
+    if (ret!=0) {
+        fprintf(stderr, "neopixel initialization failed: %s\n", neopixel_error(ret));
+        exit(5);
+    }
+
+    neopixel_setBrightness(32);
+
+    neopixel_setPixel(batteryIndicatorLED, redColor);
+    neopixel_setPixel(batteryIndicatorLED+1, 0);
+    neopixel_render();
+
+    neopixel_colortest();
+
+}
+
+
+
 int main(int argc, char **argv)
 {  
   if (!commandLineOptions(argc, argv)) {
@@ -342,8 +463,9 @@ int main(int argc, char **argv)
   }
 
   printf("use -h to get help on command line options\n");
-  printf("accessing ads1115 chip on i2c address 0x%02x\n", ADS1115_ADDRESS);
-  ADS1115_HANDLE = getADS1115Handle(ADS1115_ADDRESS);
+  printf("accessing ads1115 chip on i2c address 0x%02x\n", ADS1115_ADDRESS1);
+  a2dHandle1 = getADS1115Handle(ADS1115_ADDRESS1);
+  a2dHandle2 = getADS1115Handle(ADS1115_ADDRESS2);
 
   mcp23x17_handle = mcp23x17_setup(0, mcp23x17_address, mcp23x17_inta_pin, mcp23x17_intb_pin);
   if (mcp23x17_handle < 0) {
@@ -389,7 +511,7 @@ int main(int argc, char **argv)
 
   while (lastVolts[yThrottle]<0.1) {
     for (int i=0;i<throttleChannelCount;++i) {
-      float v=readVoltageSingleShot(ADS1115_HANDLE, throttleChannels[i], gain);
+      float v=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
       lastVolts[i]=v;
     }
   }
@@ -402,7 +524,16 @@ int main(int argc, char **argv)
   directionType direction=undetermined;
   directionType trackAction=goStraight;
 
-  while (true) {
+  neopixel_setup();
+
+  thread(batteryCheck).detach();
+
+  while (deadBattery) {
+    usleep(100*1000);
+  }
+
+
+  while (!deadBattery) {
     long long now=currentTimeMillis();
 
     // bool retry=true;
@@ -420,7 +551,7 @@ int main(int argc, char **argv)
     // }
 
     for (int i=0;i<throttleChannelCount;++i) {
-      float v=readVoltageSingleShot(ADS1115_HANDLE, throttleChannels[i], gain);
+      float v=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
       volts[i]=v;
     }
 
@@ -448,8 +579,8 @@ int main(int argc, char **argv)
 
     if (volts[yThrottle]>0.1) {
       if (volts[yThrottle]<yMiddle-yResolution) {         // move forward
-        if (direction != forward) {
-          direction=forward;
+        if (direction != forwardMotion) {
+          direction=forwardMotion;
           mcp23x17_digitalWrite(lTrackForward, HIGH);
           mcp23x17_digitalWrite(rTrackForward, HIGH);
           mcp23x17_digitalWrite(lTrackReverse, LOW);
@@ -462,8 +593,8 @@ int main(int argc, char **argv)
         // allStop();
         // exit(2);
       } else if (volts[yThrottle]>yMiddle+yResolution) {  // move backward
-        if (direction != reverse) {
-          direction = reverse;
+        if (direction != reverseMotion) {
+          direction = reverseMotion;
           mcp23x17_digitalWrite(lTrackForward, LOW);
           mcp23x17_digitalWrite(rTrackForward, LOW);
           mcp23x17_digitalWrite(lTrackReverse, HIGH);
@@ -519,5 +650,6 @@ int main(int argc, char **argv)
 
     fflush(stdout);
   }
+  allStop();
 }
 
