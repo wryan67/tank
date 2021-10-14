@@ -351,6 +351,8 @@ int main(int argc, char **argv)
       return 9;
   }
 
+  mcp23x17_setDebug(false);
+
   if (!pca9635Init()) {
     return 2;
   }
@@ -479,8 +481,8 @@ int main(int argc, char **argv)
           const char *notes = "stopped";
           printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
             now, volts[0], volts[1], volts[2], volts[3], notes);
-          allStop();
         }
+          allStop();
       }
 
       if (volts[xThrottle]>xMiddle+xResolution) {         // turn right
