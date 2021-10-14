@@ -25,6 +25,7 @@ using namespace std;
 using namespace common::utility;
 
 bool doCalibration=false;
+bool isMotorOn=false;
 
 Logger     logger("main");
 
@@ -348,6 +349,7 @@ void allStop() {
   mcp23x17_digitalWrite(rTrackForward, LOW);
   mcp23x17_digitalWrite(lTrackReverse, LOW);
   mcp23x17_digitalWrite(rTrackReverse, LOW);
+  isMotorOn=false;
 }
 
 
@@ -407,7 +409,7 @@ void neopixel_colortest() {
 }
 
 void batteryCheck() {
-  int readCount = 100;
+  int readCount = 250;
   int displayCount=0;
   while (true) {
     auto start=currentTimeMillis();
@@ -415,27 +417,27 @@ void batteryCheck() {
     for (int i=0;i<readCount;++i) {
         usleep(10*1000);
         float volts = 0;
-        while (volts<0.390) {
+        while (volts<0.390||isMotorOn) {
           volts = readVoltageSingleShot(a2dHandle2, batteryChannel, gain);          
         }
         totalVolts+=volts;
     }
-    float volts=totalVolts/readCount;
-    if (++displayCount%10==0) {
-      logger.info("battery volts: %6.3f", (12.6*volts)/.444);
-    }
-    if (volts>0.399) {
+    float volts=(12.6*(totalVolts/readCount))/.444;
+    // if (++displayCount%10==0) {
+      logger.info("battery volts: %6.3f", volts);
+    // }
+    if (volts>11.3) {
       neopixel_setPixel(batteryIndicatorLED, greenColor);
       neopixel_render();
       deadBattery=false;
-    } else if (volts>0.395) {
+    } else if (volts>11.2) {
       neopixel_setPixel(batteryIndicatorLED, yellowColor);
       neopixel_render();
       deadBattery=false;
     } else {
       neopixel_setPixel(batteryIndicatorLED, redColor);
       neopixel_render();
-      logger.info("battery volts=%6.4f", (12.6*volts)/.444);
+      logger.info("battery volts=%6.4f", volts);
       usleep(100*1000);
       deadBattery=true;
       break;
@@ -613,6 +615,7 @@ int main(int argc, char **argv)
       if (volts[yThrottle]<yMiddle-yResolution) {         // move forward
         if (direction != forwardMotion) {
           direction=forwardMotion;
+          isMotorOn=true;
           mcp23x17_digitalWrite(lTrackForward, HIGH);
           mcp23x17_digitalWrite(rTrackForward, HIGH);
           mcp23x17_digitalWrite(lTrackReverse, LOW);
@@ -627,6 +630,7 @@ int main(int argc, char **argv)
       } else if (volts[yThrottle]>yMiddle+yResolution) {  // move backward
         if (direction != reverseMotion) {
           direction = reverseMotion;
+          isMotorOn=true;
           mcp23x17_digitalWrite(lTrackForward, LOW);
           mcp23x17_digitalWrite(rTrackForward, LOW);
           mcp23x17_digitalWrite(lTrackReverse, HIGH);
