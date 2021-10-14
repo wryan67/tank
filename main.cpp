@@ -58,8 +58,9 @@ int batteryChannel=1;
 int pca9635Handle = -1;
 int pca9635Address = 0x1f;
 
-int rTrack = 15;
-int lTrack = 14;
+int rTrackChannel = 15;
+int lTrackChannel = 14;
+int joystickAlertChannel=0;
 
 
 /**************************************
@@ -382,7 +383,7 @@ bool pca9635Init() {
 
   for (int led = 0; led < 16; ++led) {
       // pca9635DigitalWrite(pca9635Handle, led, 1);
-    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 0);
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 0);
   }
 
   return true;
@@ -406,7 +407,7 @@ void neopixel_colortest() {
 }
 
 void batteryCheck() {
-  int readCount = 10;
+  int readCount = 50;
   while (true) {
     float totalVolts=0;
     for (int i=0;i<readCount;++i) {
@@ -514,12 +515,7 @@ int main(int argc, char **argv)
   readCalibration();
   float lastVolts[4]={0,0,0,0};
 
-  while (lastVolts[yThrottle]<0.1) {
-    for (int i=0;i<throttleChannelCount;++i) {
-      float v=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
-      lastVolts[i]=v;
-    }
-  }
+
 
 
     printf("startVolts:   %12.6f %12.6f %12.6f %12.6f\n", 
@@ -529,13 +525,38 @@ int main(int argc, char **argv)
   directionType direction=undetermined;
   directionType trackAction=goStraight;
 
+
   neopixel_setup();
 
   thread(batteryCheck).detach();
 
+  logger.info("battery check");
+
+
+  long c=0;
   while (deadBattery) {
     usleep(100*1000);
+    if (++c%10000==0) {
+      logger.info("dead battery");
+    }
   }
+
+  logger.info("joystick check");
+
+  c=0;
+  int loop=0;
+  while (lastVolts[yThrottle]<0.1) {
+    if (++c%10==0) ++loop;
+  
+    pca9635SetDutyCycle(pca9635Handle, joystickAlertChannel, 50*(loop%2));
+    usleep(10*1000);
+
+    for (int i=0;i<throttleChannelCount;++i) {
+      float v=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
+      lastVolts[i]=v;
+    }
+  }
+  pca9635SetDutyCycle(pca9635Handle, joystickAlertChannel, 50);
 
 
   while (!deadBattery) {
@@ -627,8 +648,8 @@ int main(int argc, char **argv)
           const char *notes = "turn right";
           printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
             now, volts[0], volts[1], volts[2], volts[3], notes);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 0);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 255);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
         }
       } else if (volts[xThrottle]<xMiddle-xResolution) {  // turn left
         if (trackAction!=turnLeft) {
@@ -636,8 +657,8 @@ int main(int argc, char **argv)
           const char *notes = "turn left";
           printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
             now, volts[0], volts[1], volts[2], volts[3], notes);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 255);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 0);
 
           printf("volts[x]: %6.4f \n",volts[xThrottle]);
           printf("xMiddle:  %6.4f %6.4f\n",xMiddle, xResolution);
@@ -647,8 +668,8 @@ int main(int argc, char **argv)
       } else {                                            // go straight
         if (trackAction!=goStraight) {
           trackAction=goStraight;
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrack, 0);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrack, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 0);
         }
       }
     }
