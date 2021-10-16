@@ -86,6 +86,10 @@ MCP23x17_GPIO lTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB,
 MCP23x17_GPIO rTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 2);
 MCP23x17_GPIO rTrackReverse = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 3);
 
+MCP23x17_GPIO turretPower = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 6);
+MCP23x17_GPIO turretFire  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 7);
+
+
 enum directionType { stopped, forwardMotion, reverseMotion, turnLeft, turnRight, goStraight, undetermined};
 
 
@@ -478,9 +482,9 @@ int main(int argc, char **argv)
 
   printf("use -h to get help on command line options\n");
   printf("accessing ads1115 chip on i2c address 0x%02x\n", ADS1115_ADDRESS1);
-  a2dHandle1 = getADS1115Handle(ADS1115_ADDRESS1);
-  a2dHandle2 = getADS1115Handle(ADS1115_ADDRESS2);
 
+
+/*    mcp23017    */
   mcp23x17_handle = mcp23x17_setup(0, mcp23x17_address, mcp23x17_inta_pin, mcp23x17_intb_pin);
   if (mcp23x17_handle < 0) {
       fprintf(stderr, "mcp23017 could not be initialized\n");
@@ -488,15 +492,22 @@ int main(int argc, char **argv)
   }
 
   mcp23x17_setDebug(false);
+  mcp23x17_setPinOutputMode(lTrackForward, LOW);
+  mcp23x17_setPinOutputMode(rTrackForward, LOW);
+  mcp23x17_setPinOutputMode(lTrackReverse, LOW);
+  mcp23x17_setPinOutputMode(rTrackReverse, LOW);
+  
+  mcp23x17_setPinOutputMode(turretPower, HIGH);
+  mcp23x17_setPinOutputMode(turretFire,  HIGH);
 
+
+/*    pca9535    */
   if (!pca9635Init()) {
     return 2;
   }
 
 
-
-
-
+/*    ADS11115    */
 // o = operation mode
 // x = mux
 // g = gain
@@ -505,16 +516,10 @@ int main(int argc, char **argv)
 // default 0x8583 1000 0101 1000 0011
 //                1111 0101 1000 0011
 //                1111 0101 1000 0011
-
-
-
-
+  a2dHandle1 = getADS1115Handle(ADS1115_ADDRESS1);
+  a2dHandle2 = getADS1115Handle(ADS1115_ADDRESS2);
   float max=getADS1115MaxGain(gain);
 
-  mcp23x17_setPinOutputMode(lTrackForward, LOW);
-  mcp23x17_setPinOutputMode(rTrackForward, LOW);
-  mcp23x17_setPinOutputMode(lTrackReverse, LOW);
-  mcp23x17_setPinOutputMode(rTrackReverse, LOW);
   
 
   if (doCalibration) {
