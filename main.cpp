@@ -26,6 +26,7 @@ using namespace common::utility;
 
 bool doCalibration=false;
 bool isMotorOn=false;
+bool fireInTheHole=false;
 
 Logger     logger("main");
 
@@ -43,11 +44,15 @@ int a2dHandle2;
 
 float vRef = 5.0;
 int   gain = 4;
-
+ 
+// 0x48 channels
 int xChannel=0;
 int yChannel=1;
+int fireChannel=3;
 
+// 0x49 channels
 int batteryChannel=1;
+
 
 /**************************************
  * 
@@ -120,12 +125,27 @@ int  yellowColor = 0xffff00;
 int  batteryPercent;
 bool deadBattery=true;
 
-/**************************************
+/*--------------------------------------
  * 
  *  Subroutines
  * 
- *************************************/
+ *--------------------------------------
+ */
 
+void fireCannon() {
+  if (fireInTheHole) {
+    return;
+  }
+  logger.info("fire cannon");
+  fireInTheHole=true;
+
+  mcp23x17_digitalWrite(turretFire,LOW);
+  usleep(200*1000); // 200 ms fire time;
+  mcp23x17_digitalWrite(turretFire,HIGH);
+
+  usleep(2*1000*1000);  // 2 second recharge
+  fireInTheHole=false;
+}
 
 bool usage() {
     fprintf(stderr, "usage: knobtest [-a address] [-g gain] [-v vRef]\n");
@@ -497,8 +517,9 @@ int main(int argc, char **argv)
   mcp23x17_setPinOutputMode(lTrackReverse, LOW);
   mcp23x17_setPinOutputMode(rTrackReverse, LOW);
   
-  mcp23x17_setPinOutputMode(turretPower, HIGH);
+  mcp23x17_setPinOutputMode(turretPower, LOW);
   mcp23x17_setPinOutputMode(turretFire,  HIGH);
+
 
 
 /*    pca9535    */
@@ -590,9 +611,9 @@ int main(int argc, char **argv)
     // }
 
     for (int i=0;i<throttleChannelCount;++i) {
-      float v=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
-      volts[i]=v;
+      volts[i]=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
     }
+
 
 
     while (volts[yThrottle]<0.1) {
@@ -614,6 +635,10 @@ int main(int argc, char **argv)
     // printf("yResolution  %6.4f\n",yResolution);
     // printf("reverse tgt  %6.4f\n",yMiddle-yResolution);
 
+    float fireVolts=readVoltageSingleShot(a2dHandle1,fireChannel, gain);
+    if (!fireInTheHole && fireVolts>0.2) {
+      thread(fireCannon).detach();
+    }
     
 
     if (volts[yThrottle]>0.1) {
