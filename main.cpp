@@ -26,7 +26,9 @@ using namespace common::utility;
 
 bool doCalibration=false;
 bool isMotorOn=false;
+
 bool fireInTheHole=false;
+bool turretActivated=false;
 
 Logger     logger("main");
 
@@ -91,8 +93,8 @@ MCP23x17_GPIO lTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB,
 MCP23x17_GPIO rTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 2);
 MCP23x17_GPIO rTrackReverse = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 3);
 
-MCP23x17_GPIO turretPower = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 6);
-MCP23x17_GPIO turretFire  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 7);
+MCP23x17_GPIO turretPowerPin = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 6);
+MCP23x17_GPIO turretFirePin  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 7);
 
 
 enum directionType { stopped, forwardMotion, reverseMotion, turnLeft, turnRight, goStraight, undetermined};
@@ -132,16 +134,30 @@ bool deadBattery=true;
  *--------------------------------------
  */
 
+void delayedTurretShutdown() {
+  usleep(30*1000*1000); // 30 second countdown
+  while (fireInTheHole) {
+    usleep(1*1000);
+  }
+  mcp23x17_digitalWrite(turretPowerPin, HIGH);
+  turretActivated=false;
+}
 void fireCannon() {
   if (fireInTheHole) {
     return;
   }
+  if (!turretActivated) {
+    turretActivated=true;
+    // mcp23x17_digitalWrite(turretPowerPin, LOW);
+    usleep(2*1000*1000);  // 2 second recharge
+    thread(delayedTurretShutdown).detach();
+  }
   logger.info("fire cannon");
   fireInTheHole=true;
 
-  mcp23x17_digitalWrite(turretFire,LOW);
+  mcp23x17_digitalWrite(turretFirePin,LOW);
   usleep(200*1000); // 200 ms fire time;
-  mcp23x17_digitalWrite(turretFire,HIGH);
+  mcp23x17_digitalWrite(turretFirePin,HIGH);
 
   usleep(2*1000*1000);  // 2 second recharge
   fireInTheHole=false;
@@ -441,7 +457,7 @@ void batteryCheck() {
     for (int i=0;i<readCount;++i) {
         usleep(10*1000);
         float volts = 0;
-        while (volts<0.390||isMotorOn) {
+        while (volts<0.390) {
           volts = readVoltageSingleShot(a2dHandle2, batteryChannel, gain);          
         }
         totalVolts+=volts;
@@ -517,8 +533,8 @@ int main(int argc, char **argv)
   mcp23x17_setPinOutputMode(lTrackReverse, LOW);
   mcp23x17_setPinOutputMode(rTrackReverse, LOW);
   
-  mcp23x17_setPinOutputMode(turretPower, LOW);
-  mcp23x17_setPinOutputMode(turretFire,  HIGH);
+  mcp23x17_setPinOutputMode(turretPowerPin, HIGH);
+  mcp23x17_setPinOutputMode(turretFirePin,  HIGH);
 
 
 
@@ -626,20 +642,23 @@ int main(int argc, char **argv)
     }
 
 
-    printf("%lld %12.6f %12.6f %12.6f %12.6f\r", 
-            now, volts[0], volts[1], volts[2], volts[3]);
-
-
 
     // printf("yMiddle      %6.4f\n",yMiddle);
     // printf("yResolution  %6.4f\n",yResolution);
     // printf("reverse tgt  %6.4f\n",yMiddle-yResolution);
 
-    float fireVolts=readVoltageSingleShot(a2dHandle1,fireChannel, gain);
-    if (!fireInTheHole && fireVolts>0.2) {
+    float fireVolts=volts[3]=readVoltageSingleShot(a2dHandle1,fireChannel, gain);
+
+    if (!fireInTheHole && fireVolts>0.28) {
+      printf("%lld %12.6f %12.6f %12.6f %12.6f\n", 
+            now, volts[0], volts[1], volts[2], volts[3]);
       thread(fireCannon).detach();
     }
     
+
+    printf("%lld %12.6f %12.6f %12.6f %12.6f\r", 
+            now, volts[0], volts[1], volts[2], volts[3]);
+
 
     if (volts[yThrottle]>0.1) {
       if (volts[yThrottle]<yMiddle-yResolution) {         // move forward
