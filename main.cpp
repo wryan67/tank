@@ -457,7 +457,7 @@ void batteryCheck() {
     for (int i=0;i<readCount;++i) {
         usleep(10*1000);
         float volts = 0;
-        while (volts<0.390) {
+        while (volts<0.390 || isMotorOn) {
           volts = readVoltageSingleShot(a2dHandle2, batteryChannel, gain);          
         }
         totalVolts+=volts;
@@ -656,8 +656,8 @@ int main(int argc, char **argv)
     }
     
 
-    printf("%lld %12.6f %12.6f %12.6f %12.6f\r", 
-            now, volts[0], volts[1], volts[2], volts[3]);
+    // printf("%lld %12.6f %12.6f %12.6f %12.6f\r", 
+    //         now, volts[0], volts[1], volts[2], volts[3]);
 
 
     if (volts[yThrottle]>0.1) {
