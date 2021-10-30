@@ -93,8 +93,8 @@ MCP23x17_GPIO lTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB,
 MCP23x17_GPIO rTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 2);
 MCP23x17_GPIO rTrackReverse = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 3);
 
-MCP23x17_GPIO turretPowerPin = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 6);
-MCP23x17_GPIO turretFirePin  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 7);
+MCP23x17_GPIO turretPowerPin = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 1);
+MCP23x17_GPIO turretFirePin  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 0);
 
 
 enum directionType { stopped, forwardMotion, reverseMotion, turnLeft, turnRight, goStraight, undetermined};
@@ -137,7 +137,7 @@ bool deadBattery=true;
 void delayedTurretShutdown() {
   usleep(30*1000*1000); // 30 second countdown
   while (fireInTheHole) {
-    usleep(1*1000);
+    usleep(10*1000);
   }
   mcp23x17_digitalWrite(turretPowerPin, HIGH);
   turretActivated=false;
@@ -145,21 +145,33 @@ void delayedTurretShutdown() {
 void fireCannon() {
   if (fireInTheHole) {
     return;
+  } else {
+    fireInTheHole=true;
   }
-  if (!turretActivated) {
-    turretActivated=true;
-    // mcp23x17_digitalWrite(turretPowerPin, LOW);
-    usleep(2*1000*1000);  // 2 second recharge
-    thread(delayedTurretShutdown).detach();
-  }
+
+
+  logger.info("powering cannon");
+  mcp23x17_digitalWrite(turretFirePin, HIGH);
+  mcp23x17_digitalWrite(turretPowerPin,LOW);
+
+  usleep(5*1000*1000);  // 5 second recharge
+  
+
+  // if (!turretActivated) {
+  //   turretActivated=true;
+  //   mcp23x17_digitalWrite(turretPowerPin, LOW);
+  //   usleep(5*1000*1000);  // 5 second recharge
+  //   thread(delayedTurretShutdown).detach();
+  // }
   logger.info("fire cannon");
-  fireInTheHole=true;
+
+  mcp23x17_digitalWrite(turretPowerPin, HIGH);
+  usleep(250*1000); 
 
   mcp23x17_digitalWrite(turretFirePin,LOW);
   usleep(200*1000); // 200 ms fire time;
   mcp23x17_digitalWrite(turretFirePin,HIGH);
 
-  usleep(2*1000*1000);  // 2 second recharge
   fireInTheHole=false;
 }
 
@@ -649,7 +661,7 @@ int main(int argc, char **argv)
 
     float fireVolts=volts[3]=readVoltageSingleShot(a2dHandle1,fireChannel, gain);
 
-    if (!fireInTheHole && fireVolts>0.28) {
+    if (!fireInTheHole && fireVolts>0.30) {
       printf("%lld %12.6f %12.6f %12.6f %12.6f\n", 
             now, volts[0], volts[1], volts[2], volts[3]);
       thread(fireCannon).detach();
