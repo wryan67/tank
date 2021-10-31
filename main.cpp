@@ -28,7 +28,7 @@ bool doCalibration=false;
 bool isMotorOn=false;
 
 bool fireInTheHole=false;
-bool turretActivated=false;
+bool cannonActivated=false;
 
 Logger     logger("main");
 
@@ -50,10 +50,14 @@ int   gain = 4;
 // 0x48 channels
 int xChannel=0;
 int yChannel=1;
-int fireChannel=3;
+int turretAspectChannel=3;
+int cannonElevationChannel=2;
 
 // 0x49 channels
+int fiveVSource=0;
 int batteryChannel=1;
+int fireChannel=2;
+int ground=3;
 
 
 /**************************************
@@ -77,24 +81,27 @@ int joystickAlertChannel=0;
  * 
  *************************************/
 
-int mcp23x17_handle = -1;
-int mcp23x17_address = 0x20;
-int mcp23x17_inta_pin = 2;
-int mcp23x17_intb_pin = 3;
-
-
+int mcp23x17_handle   = -1;
+int mcp23x17_address  = 0x20;
+int mcp23x17_inta_pin = 7;
+int mcp23x17_intb_pin = 0;
 
 int xThrottle=0;
 int yThrottle=1;
 
+int xTurret=0;
 
-MCP23x17_GPIO lTrackReverse = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 0);
-MCP23x17_GPIO lTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 1);
-MCP23x17_GPIO rTrackForward = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 2);
-MCP23x17_GPIO rTrackReverse = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 3);
 
-MCP23x17_GPIO turretPowerPin = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 1);
-MCP23x17_GPIO turretFirePin  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 0);
+MCP23x17_GPIO lTrackReverse  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 0);
+MCP23x17_GPIO lTrackForward  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 1);
+MCP23x17_GPIO rTrackForward  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 2);
+MCP23x17_GPIO rTrackReverse  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 3);
+
+MCP23x17_GPIO cannonChargingPin  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 1);  // output
+MCP23x17_GPIO cannonFirePin      = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 0);  // output
+
+MCP23x17_GPIO chargingTriggerPin   = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 5);  // input
+MCP23x17_GPIO cannonTriggerPin     = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTA, 6);  // input
 
 
 enum directionType { stopped, forwardMotion, reverseMotion, turnLeft, turnRight, goStraight, undetermined};
@@ -134,13 +141,13 @@ bool deadBattery=true;
  *--------------------------------------
  */
 
-void delayedTurretShutdown() {
+void delayedCannonShutdown() {
   usleep(30*1000*1000); // 30 second countdown
   while (fireInTheHole) {
     usleep(10*1000);
   }
-  mcp23x17_digitalWrite(turretPowerPin, HIGH);
-  turretActivated=false;
+  mcp23x17_digitalWrite(cannonChargingPin, HIGH);
+  cannonActivated=false;
 }
 void fireCannon() {
   if (fireInTheHole) {
@@ -151,26 +158,26 @@ void fireCannon() {
 
 
   logger.info("powering cannon");
-  mcp23x17_digitalWrite(turretFirePin, HIGH);
-  mcp23x17_digitalWrite(turretPowerPin,LOW);
+  mcp23x17_digitalWrite(cannonFirePin, HIGH);
+  mcp23x17_digitalWrite(cannonChargingPin,LOW);
 
   usleep(5*1000*1000);  // 5 second recharge
   
 
-  // if (!turretActivated) {
-  //   turretActivated=true;
-  //   mcp23x17_digitalWrite(turretPowerPin, LOW);
+  // if (!cannonActivated) {
+  //   cannonActivated=true;
+  //   mcp23x17_digitalWrite(cannonPowerPin, LOW);
   //   usleep(5*1000*1000);  // 5 second recharge
-  //   thread(delayedTurretShutdown).detach();
+  //   thread(delayedcannonShutdown).detach();
   // }
   logger.info("fire cannon");
 
-  mcp23x17_digitalWrite(turretPowerPin, HIGH);
+  mcp23x17_digitalWrite(cannonChargingPin, HIGH);
   usleep(250*1000); 
 
-  mcp23x17_digitalWrite(turretFirePin,LOW);
+  mcp23x17_digitalWrite(cannonFirePin,LOW);
   usleep(200*1000); // 200 ms fire time;
-  mcp23x17_digitalWrite(turretFirePin,HIGH);
+  mcp23x17_digitalWrite(cannonFirePin,HIGH);
 
   fireInTheHole=false;
 }
@@ -238,15 +245,29 @@ struct rangeType {
 };
 
 #define throttleChannelCount 2
+#define turretChannelCount 2
+
 int throttleChannels[throttleChannelCount] = {xChannel, yChannel};
+int turretChannels[throttleChannelCount] = {turretAspectChannel, cannonElevationChannel};
 
 rangeType idleThrottle[throttleChannelCount];
 rangeType maxThrottle[throttleChannelCount];
 rangeType minThrottle[throttleChannelCount];
 
-void getRange(rangeType range[], const char *message) {
+rangeType idleTurret[turretChannelCount];
+rangeType maxTurret[turretChannelCount];
+rangeType minTurret[turretChannelCount];
+
+int turretCenter=305;
+int turretFullCW=turretCenter-210;  // 515
+int turretFullCCW=turretCenter+210; //  95
+
+
+void getRange(rangeType range[], int xChannel, int yChannel, const char *message) {
   printf("%s",message);
   getchar();
+
+  int channels[2] = {xChannel, yChannel};
 
 
   for (int i=0;i<throttleChannelCount;++i) {
@@ -267,7 +288,7 @@ void getRange(rangeType range[], const char *message) {
 
     int startTime=currentTimeMillis();
     for (int i=0;i<throttleChannelCount;++i) {
-      float v=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
+      float v=readVoltageSingleShot(a2dHandle1, channels[i], gain);
 
       if (v<0.1) {
         fprintf(stderr,"unable to detect joystick, is it on and paired?\n");
@@ -306,10 +327,20 @@ void printRange(rangeType range[], const char *message) {
 
 int calibrate() {
 
+  int c1=throttleChannels[xChannel];
+  int c2=throttleChannels[yChannel];
+  
   printf("\n");
-  getRange(idleThrottle, "center joystick, then press enter");
-  getRange(maxThrottle, "move joystick forward and right all the way, then press enter");
-  getRange(minThrottle, "move joystick reverse and left all the way, then press enter");
+  getRange(idleThrottle, c1,c2, "center right joystick (throttle), then press enter");
+  getRange(maxThrottle,  c1,c2, "  move right joystick (throttle) forward and right all the way, then press enter");
+  getRange(minThrottle,  c1,c2, "  move right joystick (throttle) reverse and left all the way, then press enter");
+
+  printf("\n");
+  c1 = turretChannels[turretAspectChannel];
+  c2 = turretChannels[cannonElevationChannel];
+  getRange(idleTurret, c1,c2, "center left joystick (turret), then press enter");
+  getRange(minTurret,  c1,c2, "  move left joystick (turret), full ccw, then press enter");
+  getRange(maxTurret,  c1,c2, "  move left joystick (turret), full cw, then press enter");
 
   printf("     ------ X-Axis -------    ------ Y-Axis -------\n");
   printf("type     min    max    avg        min    max    avg\n");
@@ -358,7 +389,16 @@ int calibrate() {
 
   fprintf(calibrationFile,"throttle-resolution,%f,%f\n",xDelta,yDelta);
   fprintf(calibrationFile,"throttle-center,%f,%f\n",xMiddle,yMiddle);
-  
+
+  xMiddle = idleTurret[xTurret].avg;
+
+  fprintf(calibrationFile,"turret-ccw,center,cw,%f,%f,%f\n", 
+              minTurret[xTurret].avg,
+              idleTurret[xTurret].avg,
+              maxTurret[xTurret].avg
+         );
+
+
   fflush(calibrationFile);
   fclose(calibrationFile);
 
@@ -516,6 +556,44 @@ void neopixel_setup() {
 
 }
 
+bool triggerActivated=false;
+void triggerAction(int value) {
+  logger.info("cannon trigger value=%d",value);
+  if (value==0) {
+    mcp23x17_digitalWrite(cannonFirePin, LOW);
+  } else {
+    mcp23x17_digitalWrite(cannonFirePin, HIGH);
+  }
+  triggerActivated=false;
+}
+
+void cannonTriggerActivated(MCP23x17_GPIO gpio, int value) {
+  if (!triggerActivated) {
+    triggerActivated=true;
+
+    thread(triggerAction,value).detach();
+  }
+}
+
+
+bool chargingActivated=false;
+void chargingAction(int value) {
+  logger.info("charging charging value=%d",value);
+  if (value==0) {
+    mcp23x17_digitalWrite(cannonChargingPin, LOW);
+  } else {
+    mcp23x17_digitalWrite(cannonChargingPin, HIGH);
+  }
+  chargingActivated=false;
+}
+
+void cannonChargingActivated(MCP23x17_GPIO gpio, int value) {
+  if (!chargingActivated) {
+    chargingActivated=true;
+
+    thread(chargingAction,value).detach();
+  }
+}
 
 
 int main(int argc, char **argv)
@@ -545,9 +623,11 @@ int main(int argc, char **argv)
   mcp23x17_setPinOutputMode(lTrackReverse, LOW);
   mcp23x17_setPinOutputMode(rTrackReverse, LOW);
   
-  mcp23x17_setPinOutputMode(turretPowerPin, HIGH);
-  mcp23x17_setPinOutputMode(turretFirePin,  HIGH);
+  mcp23x17_setPinOutputMode(cannonChargingPin, HIGH);
+  mcp23x17_setPinOutputMode(cannonFirePin,     HIGH);
 
+  mcp23x17_setPinInputMode(cannonTriggerPin,   true, cannonTriggerActivated);
+  mcp23x17_setPinInputMode(chargingTriggerPin, true, cannonChargingActivated);
 
 
 /*    pca9535    */

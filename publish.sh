@@ -1,3 +1,5 @@
 #!/bin/ksh
 
-cp -p tank ~/bin
+REMOTE=tank1
+
+scp -p tank $REMOTE:~/bin
