@@ -580,7 +580,8 @@ void neopixel_setup() {
         exit(5);
     }
 
-    neopixel_setBrightness(32);
+    neopixel_setBrightness(254);
+    neopixel_clear();
 
     neopixel_setPixel(turretLED, redColor);
     neopixel_setPixel(turretLED+1, 0);
@@ -642,7 +643,6 @@ void readAnalogChannels(int bank, int handle, int gain) {
 
 void turretColor() {
   long c;
-  neopixel_setBrightness(255);
   while (true) {
     float adsVolts=ads1115Volts[1][cannonVoltsChannel];
     cannonVolts=adsVolts*100;
