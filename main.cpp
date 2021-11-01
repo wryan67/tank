@@ -168,7 +168,7 @@ void fireCannon() {
   mcp23x17_digitalWrite(cannonFirePin, HIGH);
   mcp23x17_digitalWrite(cannonChargingPin,LOW);
 
-  while (cannonVolts<46) {
+  while (cannonVolts<46.5) {
     usleep(2000);
   }
 
