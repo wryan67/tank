@@ -677,8 +677,10 @@ void readAnalogChannels(int bank, int handle, int gain) {
 void turretAspect() {
   int dutyCycle=turretCenter;
   while (true) {
-    //@@
-    // usleep(100*1000);
+    if (fireInTheHole) {
+      usleep(25*1000);
+      continue;
+    }
 
     float volts=ads1115Volts[0][turretAspectChannel];
 
