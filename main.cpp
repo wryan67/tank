@@ -38,6 +38,10 @@ Logger     logger("main");
  *  ADS1115   a2d chips
  * 
  *************************************/
+#define ADS1115_MaxBanks    2
+#define ADS1115_MaxChannels 4
+
+float ads1115Volts[ADS1115_MaxBanks][ADS1115_MaxChannels];
 
 int ADS1115_ADDRESS1=0x48;
 int ADS1115_ADDRESS2=0x49;
@@ -62,7 +66,8 @@ int ground=3;
 
 /**************************************
  * 
- *  PCA9635    motor speed controller
+ *  PCA9635    motor speed controller &
+ *             LED driver
  * 
  *************************************/
 
@@ -72,8 +77,8 @@ int pca9635Address = 0x1f;
 
 int rTrackChannel = 15;
 int lTrackChannel = 14;
-int joystickAlertChannel=0;
-
+int joystickAlertLEDChannel=0;
+int batteryAlertLEDChannel=2;
 
 /**************************************
  * 
@@ -89,8 +94,8 @@ int mcp23x17_intb_pin = 0;
 int xThrottle=0;
 int yThrottle=1;
 
-int xTurret=0;
-
+int xTurret=1;
+int yTurret=0; // elevation
 
 MCP23x17_GPIO lTrackReverse  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 0);
 MCP23x17_GPIO lTrackForward  = mcp23x17_getGPIO(mcp23x17_address, MCP23x17_PORTB, 1);
@@ -126,13 +131,13 @@ int led_count =                 10;  // number of pixels in your led strip
                                      // even bmp images
                                      // https://github.com/wryan67/udd_rpi_lib
 
-int  batteryIndicatorLED = 0;
+int  turretLED = 0;
 int  redColor    = 0xff0000;
 int  greenColor  = 0x00ff00;
 int  yellowColor = 0xffff00;
 
 int  batteryPercent;
-bool deadBattery=true;
+bool deadBattery=false;
 
 /*--------------------------------------
  * 
@@ -183,17 +188,8 @@ void fireCannon() {
 }
 
 bool usage() {
-    fprintf(stderr, "usage: knobtest [-a address] [-g gain] [-v vRef]\n");
-    fprintf(stderr, "a = hex address of the ads1115 chip\n");
-    fprintf(stderr, "v = refrence voltage\n");
-    fprintf(stderr, "g = gain; default=0; see chart:\n");
-    fprintf(stderr, "    0 = +/- %5.3f volts\n", 6.144);
-    fprintf(stderr, "    1 = +/- %5.3f volts\n", 4.096);
-    fprintf(stderr, "    2 = +/- %5.3f volts\n", 2.048);
-    fprintf(stderr, "    3 = +/- %5.3f volts\n", 1.024);
-    fprintf(stderr, "    4 = +/- %5.3f volts\n", 0.512);
-    fprintf(stderr, "    5 = +/- %5.3f volts\n", 0.256);
-
+    fprintf(stderr, "usage: tank\n");
+    
     return false;
 }
 
@@ -278,7 +274,7 @@ void getRange(rangeType range[], int xChannel, int yChannel, const char *message
   printf("calibrating"); fflush(stdout);
   long long now=currentTimeMillis();
   long long elapsed=0;
-  while (elapsed<5000) {
+  while (elapsed<4500) {
     elapsed=currentTimeMillis()-now;
     float volts[4];
     if (elapsed%100==0) {
@@ -336,11 +332,11 @@ int calibrate() {
   getRange(minThrottle,  c1,c2, "  move right joystick (throttle) reverse and left all the way, then press enter");
 
   printf("\n");
-  c1 = turretChannels[turretAspectChannel];
-  c2 = turretChannels[cannonElevationChannel];
+  c1 = turretAspectChannel;
+  c2 = cannonElevationChannel;
   getRange(idleTurret, c1,c2, "center left joystick (turret), then press enter");
-  getRange(minTurret,  c1,c2, "  move left joystick (turret), full ccw, then press enter");
-  getRange(maxTurret,  c1,c2, "  move left joystick (turret), full cw, then press enter");
+  getRange(maxTurret,  c1,c2, "  move left joystick (turret), full cw (right), then press enter");
+  getRange(minTurret,  c1,c2, "  move left joystick (turret), full ccw (left), then press enter");
 
   printf("     ------ X-Axis -------    ------ Y-Axis -------\n");
   printf("type     min    max    avg        min    max    avg\n");
@@ -348,6 +344,11 @@ int calibrate() {
   printRange(idleThrottle, "idle");
   printRange(minThrottle, "min");
   printRange(maxThrottle, "max");
+  printf("\n");
+  printRange(idleTurret, "idle");
+  printRange(minTurret, "min");
+  printRange(maxTurret, "max");
+  
 
 #define max(a,b) (a>b)?a:b
 
@@ -441,6 +442,9 @@ void allStop() {
   mcp23x17_digitalWrite(rTrackForward, LOW);
   mcp23x17_digitalWrite(lTrackReverse, LOW);
   mcp23x17_digitalWrite(rTrackReverse, LOW);
+
+  mcp23x17_digitalWrite(cannonChargingPin, HIGH);
+
   isMotorOn=false;
 }
 
@@ -485,22 +489,49 @@ bool pca9635Init() {
 
 void neopixel_colortest() {
     logger.info("moving color:  %6x", redColor);
-    neopixel_setPixel(batteryIndicatorLED, redColor);
+    neopixel_setPixel(turretLED, redColor);
     neopixel_render();
     delay(500);
 
     logger.info("braking color: %6x", yellowColor);
-    neopixel_setPixel(batteryIndicatorLED, yellowColor);
+    neopixel_setPixel(turretLED, yellowColor);
     neopixel_render();
     delay(500);
 
     logger.info("stopped color: %6x", greenColor);
-    neopixel_setPixel(batteryIndicatorLED, greenColor);
+    neopixel_setPixel(turretLED, greenColor);
     neopixel_render();
     delay(500);
 }
 
+float batteryVolts=12;
+bool isBatteryAlerting=false;
+void batteryAlert() {
+
+  if (isBatteryAlerting) {
+    return;
+  } else {
+    isBatteryAlerting=true;
+  }
+  logger.info("battery alert");
+
+  long c=0;
+  while (batteryVolts>11.3) {
+    if ((++c)%2==0) {
+      pca9635SetDutyCycle(pca9635Handle, batteryAlertLEDChannel, 50);
+    } else {
+      pca9635SetDutyCycle(pca9635Handle, batteryAlertLEDChannel, 5);
+    }
+    usleep(100*1000);
+  }
+
+  pca9635SetDutyCycle(pca9635Handle, batteryAlertLEDChannel, 0);
+  isBatteryAlerting=false;
+}
+
 void batteryCheck() {
+  pca9635SetDutyCycle(pca9635Handle, batteryAlertLEDChannel, 0);
+
   int readCount = 250;
   int displayCount=0;
   while (true) {
@@ -510,26 +541,23 @@ void batteryCheck() {
         usleep(10*1000);
         float volts = 0;
         while (volts<0.390 || isMotorOn) {
-          volts = readVoltageSingleShot(a2dHandle2, batteryChannel, gain);          
+          volts = ads1115Volts[1][batteryChannel];
         }
         totalVolts+=volts;
     }
-    float volts=(12.6*(totalVolts/readCount))/.444;
-    // if (++displayCount%10==0) {
-      logger.info("battery volts: %6.3f", volts);
-    // }
-    if (volts>11.3) {
-      neopixel_setPixel(batteryIndicatorLED, greenColor);
-      neopixel_render();
+    batteryVolts=(12.6*(totalVolts/readCount))/.444;
+    if (++displayCount%10==0) {
+      logger.info("battery volts: %6.3f", batteryVolts);
+    }
+    if (batteryVolts>11.3) {
       deadBattery=false;
-    } else if (volts>11.2) {
-      neopixel_setPixel(batteryIndicatorLED, yellowColor);
-      neopixel_render();
+    } else if (batteryVolts>11.2) {
+      thread(batteryAlert).detach();
       deadBattery=false;
     } else {
-      neopixel_setPixel(batteryIndicatorLED, redColor);
+      neopixel_setPixel(turretLED, redColor);
       neopixel_render();
-      logger.info("battery volts=%6.4f", volts);
+      logger.info("battery volts=%6.4f", batteryVolts);
       usleep(100*1000);
       deadBattery=true;
       break;
@@ -548,8 +576,8 @@ void neopixel_setup() {
 
     neopixel_setBrightness(32);
 
-    neopixel_setPixel(batteryIndicatorLED, redColor);
-    neopixel_setPixel(batteryIndicatorLED+1, 0);
+    neopixel_setPixel(turretLED, redColor);
+    neopixel_setPixel(turretLED+1, 0);
     neopixel_render();
 
     neopixel_colortest();
@@ -595,6 +623,14 @@ void cannonChargingActivated(MCP23x17_GPIO gpio, int value) {
   }
 }
 
+
+void readAnalogChannels(int bank, int handle, int gain) {
+  while (true) {
+    for (int i=0;i<ADS1115_MaxChannels;++i) {
+      ads1115Volts[bank][i]=readVoltageSingleShot(handle, i, gain);
+    }
+  }
+}
 
 int main(int argc, char **argv)
 {  
@@ -649,77 +685,44 @@ int main(int argc, char **argv)
   a2dHandle2 = getADS1115Handle(ADS1115_ADDRESS2);
   float max=getADS1115MaxGain(gain);
 
-  
-
   if (doCalibration) {
     calibrate();
+  } else {
+    thread(readAnalogChannels,0,a2dHandle1,gain).detach();
+    thread(readAnalogChannels,1,a2dHandle2,gain).detach();
   }
+
   readCalibration();
+
+  neopixel_setup();
+
+  logger.info("joystick check");
+  long c=0;
+  int  loop=0;
+
+  while (ads1115Volts[0][yChannel]<0.1) {
+    if (++c%10==0) ++loop;
+ 
+    pca9635SetDutyCycle(pca9635Handle, joystickAlertLEDChannel, 50*(loop%2));
+    usleep(10*1000);
+  }
+  pca9635SetDutyCycle(pca9635Handle, joystickAlertLEDChannel, 50);
+
+
+  logger.info("battery check");
+  thread(batteryCheck).detach();
+
   float lastVolts[4]={0,0,0,0};
-
-
-
-
-    printf("startVolts:   %12.6f %12.6f %12.6f %12.6f\n", 
-             lastVolts[0], lastVolts[1], lastVolts[2], lastVolts[3]);
-
   float volts[4]={0,0,0,0};
   directionType direction=undetermined;
   directionType trackAction=goStraight;
 
 
-  neopixel_setup();
-
-  thread(batteryCheck).detach();
-
-  logger.info("battery check");
-
-
-  long c=0;
-  while (deadBattery) {
-    usleep(100*1000);
-    if (++c%10000==0) {
-      logger.info("dead battery");
-    }
-  }
-
-  logger.info("joystick check");
-
-  c=0;
-  int loop=0;
-  while (lastVolts[yThrottle]<0.1) {
-    if (++c%10==0) ++loop;
-  
-    pca9635SetDutyCycle(pca9635Handle, joystickAlertChannel, 50*(loop%2));
-    usleep(10*1000);
-
-    for (int i=0;i<throttleChannelCount;++i) {
-      float v=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
-      lastVolts[i]=v;
-    }
-  }
-  pca9635SetDutyCycle(pca9635Handle, joystickAlertChannel, 50);
-
-
   while (!deadBattery) {
     long long now=currentTimeMillis();
 
-    // bool retry=true;
-
-    // while (retry) {
-    //   retry=false;
-    //   for (int i=0;i<throttleChannelCount;++i) {
-    //     float v=readVoltageSingleShot(ADS1115_HANDLE, throttleChannels[i], gain);
-    //     if (abs(v-lastVolts[i])/((lastVolts[i]+v)/2)>0.50) {
-    //       printf("i=%d; lastVolts[i]=%6.4f; v=%6.4f\n",i,lastVolts[i],v);
-    //       retry=true;
-    //     }
-    //     volts[i]=v;
-    //   }
-    // }
-
     for (int i=0;i<throttleChannelCount;++i) {
-      volts[i]=readVoltageSingleShot(a2dHandle1, throttleChannels[i], gain);
+      volts[i]=ads1115Volts[0][throttleChannels[i]];
     }
 
 
@@ -739,11 +742,11 @@ int main(int argc, char **argv)
     // printf("yResolution  %6.4f\n",yResolution);
     // printf("reverse tgt  %6.4f\n",yMiddle-yResolution);
 
-    float fireVolts=volts[3]=readVoltageSingleShot(a2dHandle1,fireChannel, gain);
+    float fireVolts=ads1115Volts[1][fireChannel];
 
     if (!fireInTheHole && fireVolts>0.30) {
-      printf("%lld %12.6f %12.6f %12.6f %12.6f\n", 
-            now, volts[0], volts[1], volts[2], volts[3]);
+      printf("%lld %12.6f %12.6f %12.6f %12.6f %12.6f \n", 
+            now, volts[0], volts[1], volts[2], volts[3], fireVolts);
       thread(fireCannon).detach();
     }
     
@@ -827,6 +830,13 @@ int main(int argc, char **argv)
 
     fflush(stdout);
   }
+
   allStop();
+
+  if (deadBattery) {
+    logger.info("dead battery");
+    thread(batteryAlert).detach();
+  }
+
 }
 
