@@ -648,15 +648,32 @@ void turretColor() {
     cannonVolts=adsVolts*100;
 
     float percent = cannonVolts/50;
+    float greenPercent=percent;
 
-    int color = (int)(percent*255) << 16;
+    uint32_t color = (int)(percent*254) << 8;
+
+    float redPercent=0;
+    if (percent>0.50) {
+      redPercent=(percent-.5)/.5;
+      int red = (int)(redPercent *254) << 16;
+      color = red;
+      
+      greenPercent=0.8-redPercent;
+      if (greenPercent<0.1) {
+        greenPercent=0;
+      }
+      int green = (int(greenPercent *254)) << 8;
+
+
+      color |= green;
+    }
 
     neopixel_setPixel(turretLED, color);
     neopixel_render();
 
     usleep(25*1000);
-    if ((++c)%10==0) {
-      logger.info("adsVolts=%f; volts=%f; percent=%f",adsVolts,cannonVolts, percent);
+    if ((++c)%250==0) {
+      logger.info("adsVolts=%f; volts=%f; percent=%f greenPercent=%f redPercent=%f",adsVolts,cannonVolts, percent, greenPercent, redPercent);
     }
   }
 }
