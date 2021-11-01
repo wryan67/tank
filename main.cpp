@@ -152,7 +152,7 @@ void delayedCannonShutdown() {
   while (fireInTheHole) {
     usleep(10*1000);
   }
-  logger.info("disable cannon-auto");
+  logger.info("disable cannon charging-auto");
   mcp23x17_digitalWrite(cannonChargingPin, HIGH);
   cannonActivated=false;
 }
@@ -172,16 +172,9 @@ void fireCannon() {
     usleep(2000);
   }
 
-
-  // if (!cannonActivated) {
-  //   cannonActivated=true;
-  //   mcp23x17_digitalWrite(cannonPowerPin, LOW);
-  //   usleep(5*1000*1000);  // 5 second recharge
-  //   thread(delayedcannonShutdown).detach();
-  // }
+//  thread(delayedcannonShutdown).detach();
   logger.info("fire cannon");
-
-  logger.info("disable cannon");
+  logger.info("disable cannon charging");
   mcp23x17_digitalWrite(cannonChargingPin, HIGH);
   usleep(250*1000); 
 
@@ -449,7 +442,7 @@ void allStop() {
   mcp23x17_digitalWrite(lTrackReverse, LOW);
   mcp23x17_digitalWrite(rTrackReverse, LOW);
 
-  logger.info("disable cannon-allStop");
+  logger.info("disable cannon charging-allStop");
 
   mcp23x17_digitalWrite(cannonChargingPin, HIGH);
 
@@ -617,7 +610,7 @@ void chargingAction(int value) {
   if (value==0) {
     mcp23x17_digitalWrite(cannonChargingPin, LOW);
   } else {
-      logger.info("disable cannon-action-pin");
+      logger.info("disable cannon charging-action-pin");
 
     mcp23x17_digitalWrite(cannonChargingPin, HIGH);
   }
@@ -642,6 +635,7 @@ void readAnalogChannels(int bank, int handle, int gain) {
 }
 
 void turretColor() {
+  int maxBrighness=250;
   long c;
   while (true) {
     float adsVolts=ads1115Volts[1][cannonVoltsChannel];
@@ -650,19 +644,19 @@ void turretColor() {
     float percent = cannonVolts/50;
     float greenPercent=percent;
 
-    uint32_t color = (int)(percent*254) << 8;
+    uint32_t color = (int)(percent*maxBrighness) << 8;
 
     float redPercent=0;
     if (percent>0.50) {
       redPercent=(percent-.5)/.5;
-      int red = (int)(redPercent *254) << 16;
+      int red = (int)(redPercent *maxBrighness) << 16;
       color = red;
       
       greenPercent=0.8-redPercent;
       if (greenPercent<0.1) {
         greenPercent=0;
       }
-      int green = (int(greenPercent *254)) << 8;
+      int green = (int(greenPercent *maxBrighness)) << 8;
 
 
       color |= green;
