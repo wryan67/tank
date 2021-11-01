@@ -58,11 +58,12 @@ int turretAspectChannel=3;
 int cannonElevationChannel=2;
 
 // 0x49 channels
-int fiveVSource=0;
+int cannonVoltsChannel=0;
 int batteryChannel=1;
 int fireChannel=2;
-int ground=3;
+int fiveVSource=3;
 
+float cannonVolts=0;
 
 /**************************************
  * 
@@ -123,7 +124,7 @@ enum directionType { stopped, forwardMotion, reverseMotion, turnLeft, turnRight,
 #define TARGET_FREQ             WS2811_TARGET_FREQ
 #define GPIO_PIN                18   // BCM numbering system
 #define DMA                     10   // DMA=Direct Memory Access
-int led_count =                 10;  // number of pixels in your led strip
+int led_count =                 144;  // number of pixels in your led strip
                                      // If you have a matrix, you should use
                                      // the universal display driver as it 
                                      // supports neopixel matrices and 
@@ -131,7 +132,7 @@ int led_count =                 10;  // number of pixels in your led strip
                                      // even bmp images
                                      // https://github.com/wryan67/udd_rpi_lib
 
-int  turretLED = 0;
+int  turretLED   = 0;
 int  redColor    = 0xff0000;
 int  greenColor  = 0x00ff00;
 int  yellowColor = 0xffff00;
@@ -151,6 +152,7 @@ void delayedCannonShutdown() {
   while (fireInTheHole) {
     usleep(10*1000);
   }
+  logger.info("disable cannon-auto");
   mcp23x17_digitalWrite(cannonChargingPin, HIGH);
   cannonActivated=false;
 }
@@ -166,8 +168,10 @@ void fireCannon() {
   mcp23x17_digitalWrite(cannonFirePin, HIGH);
   mcp23x17_digitalWrite(cannonChargingPin,LOW);
 
-  usleep(5*1000*1000);  // 5 second recharge
-  
+  while (cannonVolts<46) {
+    usleep(2000);
+  }
+
 
   // if (!cannonActivated) {
   //   cannonActivated=true;
@@ -177,6 +181,7 @@ void fireCannon() {
   // }
   logger.info("fire cannon");
 
+  logger.info("disable cannon");
   mcp23x17_digitalWrite(cannonChargingPin, HIGH);
   usleep(250*1000); 
 
@@ -438,10 +443,13 @@ void readCalibration() {
 
 
 void allStop() {
+
   mcp23x17_digitalWrite(lTrackForward, LOW);
   mcp23x17_digitalWrite(rTrackForward, LOW);
   mcp23x17_digitalWrite(lTrackReverse, LOW);
   mcp23x17_digitalWrite(rTrackReverse, LOW);
+
+  logger.info("disable cannon-allStop");
 
   mcp23x17_digitalWrite(cannonChargingPin, HIGH);
 
@@ -555,11 +563,9 @@ void batteryCheck() {
       thread(batteryAlert).detach();
       deadBattery=false;
     } else {
-      neopixel_setPixel(turretLED, redColor);
-      neopixel_render();
-      logger.info("battery volts=%6.4f", batteryVolts);
-      usleep(100*1000);
+      thread(batteryAlert).detach();
       deadBattery=true;
+      logger.info("battery volts=%6.4f", batteryVolts);
       break;
     }
   }
@@ -567,7 +573,7 @@ void batteryCheck() {
 
 void neopixel_setup() {
     int ledType = WS2811_STRIP_RGB;
-    int ret=neopixel_init(ledType, WS2811_TARGET_FREQ, DMA, GPIO_PIN, led_count+10);
+    int ret=neopixel_init(ledType, WS2811_TARGET_FREQ, DMA, GPIO_PIN, led_count);
 
     if (ret!=0) {
         fprintf(stderr, "neopixel initialization failed: %s\n", neopixel_error(ret));
@@ -610,6 +616,8 @@ void chargingAction(int value) {
   if (value==0) {
     mcp23x17_digitalWrite(cannonChargingPin, LOW);
   } else {
+      logger.info("disable cannon-action-pin");
+
     mcp23x17_digitalWrite(cannonChargingPin, HIGH);
   }
   chargingActivated=false;
@@ -628,6 +636,27 @@ void readAnalogChannels(int bank, int handle, int gain) {
   while (true) {
     for (int i=0;i<ADS1115_MaxChannels;++i) {
       ads1115Volts[bank][i]=readVoltageSingleShot(handle, i, gain);
+    }
+  }
+}
+
+void turretColor() {
+  long c;
+  neopixel_setBrightness(255);
+  while (true) {
+    float adsVolts=ads1115Volts[1][cannonVoltsChannel];
+    cannonVolts=adsVolts*100;
+
+    float percent = cannonVolts/50;
+
+    int color = (int)(percent*255) << 16;
+
+    neopixel_setPixel(turretLED, color);
+    neopixel_render();
+
+    usleep(25*1000);
+    if ((++c)%10==0) {
+      logger.info("adsVolts=%f; volts=%f; percent=%f",adsVolts,cannonVolts, percent);
     }
   }
 }
@@ -718,6 +747,12 @@ int main(int argc, char **argv)
   directionType trackAction=goStraight;
 
 
+  thread(turretColor).detach();
+
+  // while (true) {
+  //   usleep(1000*1000);
+  // }
+
   while (!deadBattery) {
     long long now=currentTimeMillis();
 
@@ -792,8 +827,8 @@ int main(int argc, char **argv)
           const char *notes = "stopped";
           printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
             now, volts[0], volts[1], volts[2], volts[3], notes);
-        }
           allStop();
+        }
       }
 
       if (volts[xThrottle]>xMiddle+xResolution) {         // turn right
