@@ -8,7 +8,9 @@ CFLAGS=-std=c++17
 
 all:  tank 
 
-LIBS=-lm -luuid -pthread -lNeoPixelRPi -lwiringPi -lwiringPiADS1115rpi -lwiringPiPCA9635rpi -lwiringPiMCP23x17rpi -llog4pi 
+SYSLIBS=-lm -luuid -pthread
+DEVICELISBS=-lNeoPixelRPi -lwiringPi -lwiringPiADS1115rpi -lwiringPiPCA9635rpi -lwiringPiPca9685 -lwiringPiMCP23x17rpi
+LIBS=${SYSLIBS} ${DEVICELISBS} -llog4pi 
 
 
 tank: main.cpp 

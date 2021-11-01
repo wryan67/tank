@@ -17,8 +17,10 @@
 #include <ads1115rpi.h>
 #include <mcp23x17rpi.h>
 #include <pca9635rpi.h>
+#include <pca9685.h>
 #include <neopixel.h>  
 #include <log4pi.h>
+
 
 
 using namespace std;
@@ -31,6 +33,21 @@ bool fireInTheHole=false;
 bool cannonActivated=false;
 
 Logger     logger("main");
+
+/**************************************
+ * 
+ *  PCA9865   servo driver
+ * 
+ *************************************/
+#define PCA9685_PIN_BASE 100
+
+int PCA9865_CAP      = 50;
+int PCA9865_RES      = 4046;
+int PCA9865_ADDRESS  = 0x40;
+int pca9685fd = -1;
+
+int turretAspectControlChannel=0;
+
 
 
 /**************************************
@@ -65,6 +82,9 @@ int fiveVSource=3;
 
 float cannonVolts=0;
 
+float xResolution, yResolution;
+float xMiddle, yMiddle;
+
 /**************************************
  * 
  *  PCA9635    motor speed controller &
@@ -80,6 +100,11 @@ int rTrackChannel = 15;
 int lTrackChannel = 14;
 int joystickAlertLEDChannel=0;
 int batteryAlertLEDChannel=2;
+
+float minTurretAspectVoltage;
+float idleTurretAspectVoltage;
+float maxTurretAspectVoltage;
+
 
 /**************************************
  * 
@@ -146,6 +171,16 @@ bool deadBattery=false;
  * 
  *--------------------------------------
  */
+
+void setServoDutyCycle(int pin, int speed) {
+	if (speed < 1) {
+		speed = 0;
+	} else if (speed >= 4096) {
+		speed = 4096;
+	}
+	pwmWrite(PCA9685_PIN_BASE + pin, speed);
+}
+
 
 void delayedCannonShutdown() {
   usleep(30*1000*1000); // 30 second countdown
@@ -404,8 +439,6 @@ int calibrate() {
   return 0;
 }
 
-float xResolution, yResolution;
-float xMiddle, yMiddle;
 
 void readCalibration() {
   float xDelta, yDelta;
@@ -428,6 +461,13 @@ void readCalibration() {
   xResolution = xDelta + (xDelta * 0.1);
   yResolution = yDelta + (yDelta * 0.1);
 
+  fscanf(calibrationFile,"turret-ccw,center,cw,%f,%f,%f\n", 
+              &minTurretAspectVoltage,
+              &idleTurretAspectVoltage,
+              &maxTurretAspectVoltage
+         );
+
+  
   printf("calibration:\n");  
   printf("xDelta = %.4f; yDelta=%.4f\n",xDelta, yDelta);
   printf("xResolution = %.4f; yResolution=%.4f\n",xResolution, yResolution);
@@ -634,6 +674,26 @@ void readAnalogChannels(int bank, int handle, int gain) {
   }
 }
 
+void turretAspect() {
+  int dutyCycle=turretCenter;
+  while (true) {
+    //@@
+    // usleep(100*1000);
+
+    float volts=ads1115Volts[0][turretAspectChannel];
+
+    float a1 = maxTurretAspectVoltage-minTurretAspectVoltage;
+    float a2 = volts - minTurretAspectVoltage;
+    float a3 = a2/a1;
+    float b1 = turretFullCW-turretFullCCW+1;
+
+    dutyCycle = a3*b1+turretFullCCW;
+
+    setServoDutyCycle(turretAspectControlChannel, dutyCycle);
+
+  }
+}
+
 void turretColor() {
   int maxBrighness=250;
   long c;
@@ -681,6 +741,13 @@ int main(int argc, char **argv)
     printf("cannot initialize WiringPi\n");
     return 1;
   }
+
+
+  if ((pca9685fd=pca9685Setup(PCA9685_PIN_BASE, PCA9865_ADDRESS, PCA9865_CAP)) <= 0) {
+		printf("pca9685 setup failed!\n");
+		return false;
+	}
+
 
   printf("use -h to get help on command line options\n");
   printf("accessing ads1115 chip on i2c address 0x%02x\n", ADS1115_ADDRESS1);
@@ -757,7 +824,7 @@ int main(int argc, char **argv)
   directionType direction=undetermined;
   directionType trackAction=goStraight;
 
-
+  thread(turretAspect).detach();
   thread(turretColor).detach();
 
   // while (true) {
