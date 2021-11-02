@@ -695,7 +695,7 @@ void turretAspect() {
 
   }
 }
-
+float lastCannonVolts=0;
 void turretColor() {
   int maxBrighness=250;
   long c;
@@ -729,7 +729,10 @@ void turretColor() {
 
     usleep(25*1000);
     if ((++c)%250==0) {
-      logger.info("adsVolts=%f; volts=%f; percent=%f greenPercent=%f redPercent=%f",adsVolts,cannonVolts, percent, greenPercent, redPercent);
+      if (cannonVolts != lastCannonVolts) {        
+        lastCannonVolts=cannonVolts;
+        logger.info("adsVolts=%f; volts=%f; percent=%f greenPercent=%f redPercent=%f",adsVolts,cannonVolts, percent, greenPercent, redPercent);
+      }
     }
   }
 }
@@ -796,12 +799,12 @@ int main(int argc, char **argv)
 
   if (doCalibration) {
     calibrate();
-  } else {
-    thread(readAnalogChannels,0,a2dHandle1,gain).detach();
-    thread(readAnalogChannels,1,a2dHandle2,gain).detach();
   }
-
   readCalibration();
+
+  thread(readAnalogChannels,0,a2dHandle1,gain).detach();
+  thread(readAnalogChannels,1,a2dHandle2,gain).detach();
+ 
 
   neopixel_setup();
 
