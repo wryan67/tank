@@ -574,22 +574,28 @@ void batteryCheck() {
   pca9635SetDutyCycle(pca9635Handle, batteryAlertLEDChannel, 0);
 
   int readCount = 250;
-  int displayCount=0;
+  long displayCount=0;
   while (true) {
-    auto start=currentTimeMillis();
     float totalVolts=0;
     for (int i=0;i<readCount;++i) {
         usleep(10*1000);
-        float volts = 0;
+        float volts = ads1115Volts[1][batteryChannel];
         while (volts<0.390 || isMotorOn) {
+          if (volts<0.390) {
+            usleep(10*1000);
+          } else {
+            usleep(100*1000);
+          }
           volts = ads1115Volts[1][batteryChannel];
         }
         totalVolts+=volts;
     }
     batteryVolts=(12.6*(totalVolts/readCount))/.444;
-    if (++displayCount%10==0) {
-      logger.info("battery volts: %6.3f", batteryVolts);
+    if (++displayCount%2==0) {
+      logger.info("battery volts: %6.3f", batteryVolts); 
     }
+    fflush(stdout); fflush(stderr);
+
     if (batteryVolts>11.3) {
       deadBattery=false;
     } else if (batteryVolts>11.2) {
