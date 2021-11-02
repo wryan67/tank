@@ -96,8 +96,8 @@ float xMiddle, yMiddle;
 int pca9635Handle = -1;
 int pca9635Address = 0x1f;
 
-int rTrackChannel = 15;
-int lTrackChannel = 14;
+int rTrackChannel = 14;
+int lTrackChannel = 15;
 int joystickAlertLEDChannel=0;
 int batteryAlertLEDChannel=2;
 
