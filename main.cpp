@@ -728,12 +728,12 @@ void turretColor() {
     neopixel_render();
 
     usleep(25*1000);
-    if ((++c)%250==0) {
-      if (cannonVolts != lastCannonVolts) {        
-        lastCannonVolts=cannonVolts;
-        logger.info("adsVolts=%f; volts=%f; percent=%f greenPercent=%f redPercent=%f",adsVolts,cannonVolts, percent, greenPercent, redPercent);
-      }
-    }
+    // if ((++c)%250==0) {
+    //   if (cannonVolts != lastCannonVolts) {        
+    //     lastCannonVolts=cannonVolts;
+    //     logger.info("adsVolts=%f; volts=%f; percent=%f greenPercent=%f redPercent=%f",adsVolts,cannonVolts, percent, greenPercent, redPercent);
+    //   }
+    // }
   }
 }
 
