@@ -711,7 +711,9 @@ void turretAspect() {
 float lastCannonVolts=0;
 void turretColor() {
   int maxBrighness=250;
-  int brightness=133;
+  int brightness=230;
+  int bDelta=200;
+
   long c;
   while (true) {
     float adsVolts=ads1115Volts[1][cannonVoltsChannel];
@@ -727,14 +729,14 @@ void turretColor() {
       redPercent=(percent-.5)/.5;
       int red = (int)(redPercent *maxBrighness) << 16;
       color = red;
-      brightness-=100*(1-redPercent);
+      brightness-=bDelta*(1-redPercent);
 
       greenPercent=0.8-redPercent;
       if (greenPercent<0.1) {
         greenPercent=0;
       }
       int green = (int(greenPercent *maxBrighness)) << 8;
-      brightness+=100*(1-redPercent);
+      brightness+=bDelta*(1-redPercent);
 
 
       color |= green;
