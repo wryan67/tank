@@ -530,17 +530,23 @@ bool pca9635Init() {
 
 void neopixel_colortest() {
     logger.info("moving color:  %6x", redColor);
-    neopixel_setPixel(turretLED, redColor);
+    for (int i=0;i<4;++i) { 
+      neopixel_setPixel(turretLED+i, redColor);
+    }
     neopixel_render();
     delay(500);
 
     logger.info("braking color: %6x", yellowColor);
-    neopixel_setPixel(turretLED, yellowColor);
+    for (int i=0;i<4;++i) { 
+      neopixel_setPixel(turretLED+i, yellowColor);
+    }
     neopixel_render();
     delay(500);
 
     logger.info("stopped color: %6x", greenColor);
-    neopixel_setPixel(turretLED, greenColor);
+    for (int i=0;i<4;++i) { 
+      neopixel_setPixel(turretLED+i, greenColor);
+    }
     neopixel_render();
     delay(500);
 }
@@ -619,11 +625,12 @@ void neopixel_setup() {
         exit(5);
     }
 
-    neopixel_setBrightness(254);
+    neopixel_setBrightness(32);
     neopixel_clear();
 
-    neopixel_setPixel(turretLED, redColor);
-    neopixel_setPixel(turretLED+1, 0);
+    for (int i=0;i<4;++i) { 
+      neopixel_setPixel(turretLED+i, redColor);
+    }
     neopixel_render();
 
     neopixel_colortest();
@@ -704,6 +711,7 @@ void turretAspect() {
 float lastCannonVolts=0;
 void turretColor() {
   int maxBrighness=250;
+  int brightness=133;
   long c;
   while (true) {
     float adsVolts=ads1115Volts[1][cannonVoltsChannel];
@@ -719,18 +727,23 @@ void turretColor() {
       redPercent=(percent-.5)/.5;
       int red = (int)(redPercent *maxBrighness) << 16;
       color = red;
-      
+      brightness-=100*(1-redPercent);
+
       greenPercent=0.8-redPercent;
       if (greenPercent<0.1) {
         greenPercent=0;
       }
       int green = (int(greenPercent *maxBrighness)) << 8;
+      brightness+=100*(1-redPercent);
 
 
       color |= green;
     }
 
-    neopixel_setPixel(turretLED, color);
+    for (int i=0;i<4;++i) { 
+      neopixel_setPixel(turretLED+i, color);
+    }
+    neopixel_setBrightness(brightness);
     neopixel_render();
 
     usleep(25*1000);
