@@ -163,6 +163,7 @@ int  greenColor  = 0x00ff00;
 int  yellowColor = 0xffff00;
 
 int  batteryPercent;
+bool batteryWarning=true;
 bool deadBattery=false;
 
 /*--------------------------------------
@@ -551,8 +552,9 @@ void neopixel_colortest() {
     delay(500);
 }
 
-float batteryVolts=12;
+float batteryVolts=12.6;
 bool isBatteryAlerting=false;
+
 void batteryAlert() {
 
   if (isBatteryAlerting) {
@@ -563,7 +565,7 @@ void batteryAlert() {
   logger.info("battery alert");
 
   long c=0;
-  while (batteryVolts>11.3) {
+  while (batteryVolts<11.4) {
     if ((++c)%2==0) {
       pca9635SetDutyCycle(pca9635Handle, batteryAlertLEDChannel, 50);
     } else {
@@ -580,14 +582,16 @@ void batteryCheck() {
   pca9635SetDutyCycle(pca9635Handle, batteryAlertLEDChannel, 0);
 
   int readCount = 250;
-  long displayCount=0;
   while (true) {
     float totalVolts=0;
     for (int i=0;i<readCount;++i) {
         usleep(10*1000);
         float volts = ads1115Volts[1][batteryChannel];
-        while (volts<0.390 || isMotorOn) {
-          if (volts<0.390) {
+        float batteryVolts=((5100+200)*volts)/200;
+        // logger.info("--ads volts=%f; battery volts: %6.3f", volts, batteryVolts); 
+
+        while (volts<0.1 || volts>0.51|| isMotorOn) {
+          if (volts<0.1) {
             usleep(10*1000);
           } else {
             usleep(100*1000);
@@ -596,22 +600,17 @@ void batteryCheck() {
         }
         totalVolts+=volts;
     }
-    batteryVolts=(12.6*(totalVolts/readCount))/.444;
-    if (++displayCount%2==0) {
-      logger.info("battery volts: %6.3f", batteryVolts); 
-    }
+    batteryVolts=((5100+200)*(totalVolts/readCount))/200;
+    logger.info("battery volts: %6.3f", batteryVolts); 
     fflush(stdout); fflush(stderr);
 
     if (batteryVolts>11.3) {
       deadBattery=false;
     } else if (batteryVolts>11.2) {
-      thread(batteryAlert).detach();
+      batteryWarning=true;
       deadBattery=false;
     } else {
-      thread(batteryAlert).detach();
       deadBattery=true;
-      logger.info("battery volts=%6.4f", batteryVolts);
-      break;
     }
   }
 }
@@ -857,7 +856,13 @@ int main(int argc, char **argv)
   //   usleep(1000*1000);
   // }
 
-  while (!deadBattery) {
+  while (true) {
+    if (deadBattery) {
+      allStop();
+      logger.info("dead battery");
+      batteryAlert();
+    }
+
     long long now=currentTimeMillis();
 
     for (int i=0;i<throttleChannelCount;++i) {
@@ -970,12 +975,6 @@ int main(int argc, char **argv)
     fflush(stdout);
   }
 
-  allStop();
-
-  if (deadBattery) {
-    logger.info("dead battery");
-    thread(batteryAlert).detach();
-  }
 
 }
 
