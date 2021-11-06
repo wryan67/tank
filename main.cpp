@@ -760,6 +760,18 @@ void turretColor() {
 directionType direction=undetermined;
 directionType trackAction=goStraight;
 
+void throttleControl(long long &now) {
+
+  float xVolts = ads1115Volts[0][throttleChannels[xChannel]];
+
+  float yVolts = ads1115Volts[0][throttleChannels[yChannel]];
+
+
+  printf("%lld <%5.3f,5.3f>\r", now, xVolts, yVolts);
+
+
+}
+
 void throttleControlOld(long long &now) {
     float volts[4];
 
@@ -767,6 +779,10 @@ void throttleControlOld(long long &now) {
     for (int i=0;i<throttleChannelCount;++i) {
       volts[i]=ads1115Volts[0][throttleChannels[i]];
     }
+
+    // printf("%lld %12.6f %12.6f %12.6f %12.6f\r", 
+    //         now, volts[0], volts[1], volts[2], volts[3]);
+
 
     if (volts[yThrottle]>0.1) {
       if (volts[yThrottle]<yMiddle-yResolution) {         // move forward
@@ -957,11 +973,7 @@ int main(int argc, char **argv)
     }
     
 
-    // printf("%lld %12.6f %12.6f %12.6f %12.6f\r", 
-    //         now, volts[0], volts[1], volts[2], volts[3]);
-
-
-    throttleControlOld(now);
+    throttleControl(now);
 
     fflush(stdout);
   }
