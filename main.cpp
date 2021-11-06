@@ -757,6 +757,92 @@ void turretColor() {
   }
 }
 
+directionType direction=undetermined;
+directionType trackAction=goStraight;
+
+void throttleControlOld(long long &now) {
+    float volts[4];
+
+
+    for (int i=0;i<throttleChannelCount;++i) {
+      volts[i]=ads1115Volts[0][throttleChannels[i]];
+    }
+
+    if (volts[yThrottle]>0.1) {
+      if (volts[yThrottle]<yMiddle-yResolution) {         // move forward
+        if (direction != forwardMotion) {
+          direction=forwardMotion;
+          isMotorOn=true;
+          mcp23x17_digitalWrite(lTrackForward, HIGH);
+          mcp23x17_digitalWrite(rTrackForward, HIGH);
+          mcp23x17_digitalWrite(lTrackReverse, LOW);
+          mcp23x17_digitalWrite(rTrackReverse, LOW);
+      
+          const char *notes = "moving forward";
+          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
+            now, volts[0], volts[1], volts[2], volts[3], notes);
+        }
+        // allStop();
+        // exit(2);
+      } else if (volts[yThrottle]>yMiddle+yResolution) {  // move backward
+        if (direction != reverseMotion) {
+          direction = reverseMotion;
+          isMotorOn=true;
+          mcp23x17_digitalWrite(lTrackForward, LOW);
+          mcp23x17_digitalWrite(rTrackForward, LOW);
+          mcp23x17_digitalWrite(lTrackReverse, HIGH);
+          mcp23x17_digitalWrite(rTrackReverse, HIGH);
+
+          const char *notes = "moving backward";
+          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
+            now, volts[0], volts[1], volts[2], volts[3], notes);
+        }
+        // allStop();
+        // exit(2);
+      } else {                                           // stop
+        if (direction!=stopped) {
+          direction=stopped;
+          const char *notes = "stopped";
+          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
+            now, volts[0], volts[1], volts[2], volts[3], notes);
+          allStop();
+        }
+      }
+
+      if (volts[xThrottle]>xMiddle+xResolution) {         // turn right
+        if (trackAction!=turnRight) {
+          trackAction=turnRight;
+          const char *notes = "turn right";
+          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
+            now, volts[0], volts[1], volts[2], volts[3], notes);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
+        }
+      } else if (volts[xThrottle]<xMiddle-xResolution) {  // turn left
+        if (trackAction!=turnLeft) {
+          trackAction=turnLeft;
+          const char *notes = "turn left";
+          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
+            now, volts[0], volts[1], volts[2], volts[3], notes);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 0);
+
+          printf("volts[x]: %6.4f \n",volts[xThrottle]);
+          printf("xMiddle:  %6.4f %6.4f\n",xMiddle, xResolution);
+          printf("xTarget:  %6.4f \n",xMiddle-xResolution);
+          // exit(2);
+        }
+      } else {                                            // go straight
+        if (trackAction!=goStraight) {
+          trackAction=goStraight;
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 0);
+          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 0);
+        }
+      }
+    }
+
+}
+
 int main(int argc, char **argv)
 {  
   if (!commandLineOptions(argc, argv)) {
@@ -846,8 +932,6 @@ int main(int argc, char **argv)
 
   float lastVolts[4]={0,0,0,0};
   float volts[4]={0,0,0,0};
-  directionType direction=undetermined;
-  directionType trackAction=goStraight;
 
   thread(turretAspect).detach();
   thread(turretColor).detach();
@@ -865,32 +949,10 @@ int main(int argc, char **argv)
 
     long long now=currentTimeMillis();
 
-    for (int i=0;i<throttleChannelCount;++i) {
-      volts[i]=ads1115Volts[0][throttleChannels[i]];
-    }
-
-
-
-    while (volts[yThrottle]<0.1) {
-      for (int i=0;i<throttleChannelCount;++i) {
-        if (volts[i]<=(-max) || volts[i]>=max) {
-          printf("out of range\n");
-          break;
-        }
-      }
-    }
-
-
-
-    // printf("yMiddle      %6.4f\n",yMiddle);
-    // printf("yResolution  %6.4f\n",yResolution);
-    // printf("reverse tgt  %6.4f\n",yMiddle-yResolution);
-
     float fireVolts=ads1115Volts[1][fireChannel];
 
     if (!fireInTheHole && fireVolts>0.30) {
-      printf("%lld %12.6f %12.6f %12.6f %12.6f %12.6f \n", 
-            now, volts[0], volts[1], volts[2], volts[3], fireVolts);
+      logger.info("%lld fireVolts=%12.6f", now,  fireVolts);
       thread(fireCannon).detach();
     }
     
@@ -899,78 +961,7 @@ int main(int argc, char **argv)
     //         now, volts[0], volts[1], volts[2], volts[3]);
 
 
-    if (volts[yThrottle]>0.1) {
-      if (volts[yThrottle]<yMiddle-yResolution) {         // move forward
-        if (direction != forwardMotion) {
-          direction=forwardMotion;
-          isMotorOn=true;
-          mcp23x17_digitalWrite(lTrackForward, HIGH);
-          mcp23x17_digitalWrite(rTrackForward, HIGH);
-          mcp23x17_digitalWrite(lTrackReverse, LOW);
-          mcp23x17_digitalWrite(rTrackReverse, LOW);
-      
-          const char *notes = "moving forward";
-          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
-            now, volts[0], volts[1], volts[2], volts[3], notes);
-        }
-        // allStop();
-        // exit(2);
-      } else if (volts[yThrottle]>yMiddle+yResolution) {  // move backward
-        if (direction != reverseMotion) {
-          direction = reverseMotion;
-          isMotorOn=true;
-          mcp23x17_digitalWrite(lTrackForward, LOW);
-          mcp23x17_digitalWrite(rTrackForward, LOW);
-          mcp23x17_digitalWrite(lTrackReverse, HIGH);
-          mcp23x17_digitalWrite(rTrackReverse, HIGH);
-
-          const char *notes = "moving backward";
-          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
-            now, volts[0], volts[1], volts[2], volts[3], notes);
-        }
-        // allStop();
-        // exit(2);
-      } else {                                           // stop
-        if (direction!=stopped) {
-          direction=stopped;
-          const char *notes = "stopped";
-          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
-            now, volts[0], volts[1], volts[2], volts[3], notes);
-          allStop();
-        }
-      }
-
-      if (volts[xThrottle]>xMiddle+xResolution) {         // turn right
-        if (trackAction!=turnRight) {
-          trackAction=turnRight;
-          const char *notes = "turn right";
-          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
-            now, volts[0], volts[1], volts[2], volts[3], notes);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 0);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
-        }
-      } else if (volts[xThrottle]<xMiddle-xResolution) {  // turn left
-        if (trackAction!=turnLeft) {
-          trackAction=turnLeft;
-          const char *notes = "turn left";
-          printf("%lld %12.6f %12.6f %12.6f %12.6f; %s\n", 
-            now, volts[0], volts[1], volts[2], volts[3], notes);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 0);
-
-          printf("volts[x]: %6.4f \n",volts[xThrottle]);
-          printf("xMiddle:  %6.4f %6.4f\n",xMiddle, xResolution);
-          printf("xTarget:  %6.4f \n",xMiddle-xResolution);
-          // exit(2);
-        }
-      } else {                                            // go straight
-        if (trackAction!=goStraight) {
-          trackAction=goStraight;
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 0);
-          wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 0);
-        }
-      }
-    }
+    throttleControlOld(now);
 
     fflush(stdout);
   }
