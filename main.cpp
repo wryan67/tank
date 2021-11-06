@@ -425,6 +425,18 @@ int calibrate() {
   fprintf(calibrationFile,"throttle-resolution,%f,%f\n",xDelta,yDelta);
   fprintf(calibrationFile,"throttle-center,%f,%f\n",xMiddle,yMiddle);
 
+  fprintf(calibrationFile, "throttle-x,%f,%f,%f\n",
+              minThrottle[xThrottle].avg,
+              idleThrottle[xThrottle].avg,
+              maxThrottle[xThrottle].avg
+  );
+
+  fprintf(calibrationFile, "throttle-y,%f,%f,%f\n",
+              minThrottle[yThrottle].avg,
+              idleThrottle[yThrottle].avg,
+              maxThrottle[yThrottle].avg
+  );
+
   xMiddle = idleTurret[xTurret].avg;
 
   fprintf(calibrationFile,"turret-ccw,center,cw,%f,%f,%f\n", 
@@ -461,6 +473,21 @@ void readCalibration() {
 
   xResolution = xDelta + (xDelta * 0.1);
   yResolution = yDelta + (yDelta * 0.1);
+
+
+  fscanf(calibrationFile, "throttle-x,%f,%f,%f\n",
+              &minThrottle[xThrottle].avg,
+              &idleThrottle[xThrottle].avg,
+              &maxThrottle[xThrottle].avg
+  );
+
+
+  fscanf(calibrationFile, "throttle-y,%f,%f,%f\n",
+              &minThrottle[yThrottle].avg,
+              &idleThrottle[yThrottle].avg,
+              &maxThrottle[yThrottle].avg
+  );
+
 
   fscanf(calibrationFile,"turret-ccw,center,cw,%f,%f,%f\n", 
               &minTurretAspectVoltage,
@@ -688,6 +715,12 @@ void readAnalogChannels(int bank, int handle, int gain) {
 
 void turretAspect() {
   int dutyCycle=turretCenter;
+  int lastCycle=0;
+
+  logger.info("minTurretAspectVoltage:  %f",minTurretAspectVoltage);
+  logger.info("maxTurretAspectVoltage:  %f",maxTurretAspectVoltage);
+  logger.info("turretFullCCW-CW:        <%d,%d>",turretFullCCW, turretFullCW);
+
   while (true) {
     if (fireInTheHole) {
       usleep(25*1000);
@@ -703,10 +736,15 @@ void turretAspect() {
 
     dutyCycle = a3*b1+turretFullCCW;
 
-    setServoDutyCycle(turretAspectControlChannel, dutyCycle);
-
+    if (abs(dutyCycle-lastCycle)>3) {
+      lastCycle=dutyCycle;
+      setServoDutyCycle(turretAspectControlChannel, dutyCycle);
+      float dutyCyclePercent=(float)dutyCycle/4096;
+      logger.info("turret aspect volts=%f;  duty cycle: %5.2f", volts, dutyCyclePercent*100);
+    }
   }
 }
+
 float lastCannonVolts=0;
 void turretColor() {
   int maxBrighness=250;
@@ -761,13 +799,56 @@ directionType direction=undetermined;
 directionType trackAction=goStraight;
 
 void throttleControl(long long &now) {
-
+//@@
   float xVolts = ads1115Volts[0][throttleChannels[xChannel]];
-
   float yVolts = ads1115Volts[0][throttleChannels[yChannel]];
 
+  float xMin=minThrottle[xThrottle].avg;
+  float xMax=maxThrottle[xThrottle].avg;
+  float yMin=minThrottle[yThrottle].avg;
+  float yMax=maxThrottle[yThrottle].avg;
+  
+  float xPercent =   (xVolts-xMin)/(xMax-xMin);
+  float yPercent = 1-(yVolts-yMax)/(yMin-yMax);
 
-  printf("%lld <%5.3f,5.3f>\r", now, xVolts, yVolts);
+  if (yPercent<0) yPercent=0;
+  if (yPercent>1) yPercent=1;
+  if (xPercent<0) xPercent=0;
+  if (xPercent>1) xPercent=1;
+
+  xPercent=(xPercent-0.5)*2;
+  yPercent=(yPercent-0.5)*2;
+
+  if (abs(xPercent)<0.07) xPercent=0;
+  if (abs(yPercent)<0.07) yPercent=0;
+
+
+  printf("%lld <%5.3f,%5.3f> <%5.2f,%5.2f>\r", now, xVolts, yVolts, xPercent, yPercent);
+
+
+  float lThrottle=0;
+  float rThrottle=0;
+
+  wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
+  wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
+
+
+  if (yPercent==0) {
+    mcp23x17_digitalWrite(lTrackForward, LOW);
+    mcp23x17_digitalWrite(rTrackForward, LOW);
+    mcp23x17_digitalWrite(lTrackReverse, LOW);
+    mcp23x17_digitalWrite(rTrackReverse, LOW);
+  } else if (yPercent>0) {  // move forward
+    mcp23x17_digitalWrite(lTrackForward, HIGH);
+    mcp23x17_digitalWrite(rTrackForward, HIGH);
+    mcp23x17_digitalWrite(lTrackReverse, LOW);
+    mcp23x17_digitalWrite(rTrackReverse, LOW);
+  } else { // move backward
+    mcp23x17_digitalWrite(lTrackForward, LOW);
+    mcp23x17_digitalWrite(rTrackForward, LOW);
+    mcp23x17_digitalWrite(lTrackReverse, HIGH);
+    mcp23x17_digitalWrite(rTrackReverse, HIGH);     
+  }
 
 
 }
