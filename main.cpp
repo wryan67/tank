@@ -850,7 +850,7 @@ void throttleControl(long long &now) {
       mcp23x17_digitalWrite(lTrackReverse, LOW);
       mcp23x17_digitalWrite(rTrackReverse, LOW);
     }
-  } else if (yPercent>abs(xPercent) || (yPercent==1)) {  // move forward
+  } else if (yPercent>abs(xPercent) || (yPercent>=1)) {  // move forward
     int lp = (255-abs(yPercent*255))/2;
     int rp = (255-abs(yPercent*255))/2;
 
@@ -871,7 +871,7 @@ void throttleControl(long long &now) {
       mcp23x17_digitalWrite(lTrackReverse, LOW);
       mcp23x17_digitalWrite(rTrackReverse, LOW);
     }
-  } else if (yPercent<-abs(xPercent) || yPercent==-1) { // move backward
+  } else if (yPercent<-abs(xPercent) || yPercent<=-1) { // move backward
       int lp = (255-abs(yPercent*255))/2;
     int rp = (255-abs(yPercent*255))/2;
 
