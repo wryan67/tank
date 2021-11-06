@@ -797,6 +797,7 @@ void turretColor() {
 
 directionType direction=undetermined;
 directionType trackAction=goStraight;
+int dd=-1;
 
 void throttleControl(long long &now) {
 //@@
@@ -811,43 +812,128 @@ void throttleControl(long long &now) {
   float xPercent =   (xVolts-xMin)/(xMax-xMin);
   float yPercent = 1-(yVolts-yMax)/(yMin-yMax);
 
-  if (yPercent<0) yPercent=0;
-  if (yPercent>1) yPercent=1;
-  if (xPercent<0) xPercent=0;
-  if (xPercent>1) xPercent=1;
+  if (yPercent<0.03) yPercent=0;
+  if (xPercent<0.03) xPercent=0;
+  if (yPercent>0.95) yPercent=1;
+  if (xPercent>0.95) xPercent=1;
+
+
+
 
   xPercent=(xPercent-0.5)*2;
   yPercent=(yPercent-0.5)*2;
 
-  if (abs(xPercent)<0.07) xPercent=0;
-  if (abs(yPercent)<0.07) yPercent=0;
+  if (abs(xPercent)<0.08) xPercent=0;
+  if (abs(yPercent)<0.08) yPercent=0;
+
+  // if (xPercent>0.95) xPercent=1;
+  // if (yPercent<0.95) yPercent=-1;
 
 
-  printf("%lld <%5.3f,%5.3f> <%5.2f,%5.2f>\r", now, xVolts, yVolts, xPercent, yPercent);
-
+  // printf("%lld <%5.3f,%5.3f> <%5.2f,%5.2f>\r", now, xVolts, yVolts, xPercent, yPercent);
+// return;
 
   float lThrottle=0;
   float rThrottle=0;
 
-  wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
-  wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
 
 
-  if (yPercent==0) {
-    mcp23x17_digitalWrite(lTrackForward, LOW);
-    mcp23x17_digitalWrite(rTrackForward, LOW);
-    mcp23x17_digitalWrite(lTrackReverse, LOW);
-    mcp23x17_digitalWrite(rTrackReverse, LOW);
-  } else if (yPercent>0) {  // move forward
-    mcp23x17_digitalWrite(lTrackForward, HIGH);
-    mcp23x17_digitalWrite(rTrackForward, HIGH);
-    mcp23x17_digitalWrite(lTrackReverse, LOW);
-    mcp23x17_digitalWrite(rTrackReverse, LOW);
-  } else { // move backward
-    mcp23x17_digitalWrite(lTrackForward, LOW);
-    mcp23x17_digitalWrite(rTrackForward, LOW);
-    mcp23x17_digitalWrite(lTrackReverse, HIGH);
-    mcp23x17_digitalWrite(rTrackReverse, HIGH);     
+  if (yPercent==0 && xPercent==0) {
+    if (dd!=1) {
+      dd=1;
+      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+          now, xVolts, yVolts, xPercent, yPercent, "stop-100");
+      wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
+      wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
+      mcp23x17_digitalWrite(lTrackForward, LOW);
+      mcp23x17_digitalWrite(rTrackForward, LOW);
+      mcp23x17_digitalWrite(lTrackReverse, LOW);
+      mcp23x17_digitalWrite(rTrackReverse, LOW);
+    }
+  } else if (yPercent>abs(xPercent)) {  // move forward
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
+    if (dd!=2) {
+      dd=2;
+      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+          now, xVolts, yVolts, xPercent, yPercent, "move forward");
+      mcp23x17_digitalWrite(lTrackForward, HIGH);
+      mcp23x17_digitalWrite(rTrackForward, HIGH);
+      mcp23x17_digitalWrite(lTrackReverse, LOW);
+      mcp23x17_digitalWrite(rTrackReverse, LOW);
+    }
+  } else if (yPercent<-abs(xPercent)) { // move backward
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
+    if (dd!=3) {
+      dd=3;
+      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+          now, xVolts, yVolts, xPercent, yPercent, "move backward");
+      mcp23x17_digitalWrite(lTrackForward, LOW);
+      mcp23x17_digitalWrite(rTrackForward, LOW);
+      mcp23x17_digitalWrite(lTrackReverse, HIGH);
+      mcp23x17_digitalWrite(rTrackReverse, HIGH);     
+    }
+  } else if (xPercent>abs(yPercent)) { // turn right
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
+    if (yPercent>0) {          
+      if (dd!=24) {
+        dd=24;
+        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+            now, xVolts, yVolts, xPercent, yPercent, "right turn-100");
+        mcp23x17_digitalWrite(lTrackForward, LOW);
+        mcp23x17_digitalWrite(rTrackForward, HIGH);
+        mcp23x17_digitalWrite(lTrackReverse, HIGH);
+        mcp23x17_digitalWrite(rTrackReverse, LOW);     
+      }
+    } else {
+      if (dd!=34) {
+        dd=34;
+        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+            now, xVolts, yVolts, xPercent, yPercent, "right turn-200");
+        mcp23x17_digitalWrite(lTrackForward, HIGH);
+        mcp23x17_digitalWrite(rTrackForward, LOW);
+        mcp23x17_digitalWrite(lTrackReverse, LOW);
+        mcp23x17_digitalWrite(rTrackReverse, HIGH);
+      }
+    }
+  } else if (xPercent<-abs(yPercent)) { // turn left
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
+    if (yPercent>0) {
+      if (dd!=25) {
+        dd=25;
+        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+            now, xVolts, yVolts, xPercent, yPercent, "left turn-100");
+        mcp23x17_digitalWrite(lTrackForward, HIGH);
+        mcp23x17_digitalWrite(rTrackForward, LOW);
+        mcp23x17_digitalWrite(lTrackReverse, LOW);
+        mcp23x17_digitalWrite(rTrackReverse, HIGH);
+      } 
+    } else {       
+      if (dd!=35) {
+        dd=35;
+        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+            now, xVolts, yVolts, xPercent, yPercent, "left turn-200");
+        mcp23x17_digitalWrite(lTrackForward, LOW);
+        mcp23x17_digitalWrite(rTrackForward, HIGH);
+        mcp23x17_digitalWrite(lTrackReverse, HIGH);
+        mcp23x17_digitalWrite(rTrackReverse, LOW);     
+      }
+    }
+  } else {
+    if (dd!=6) {
+      dd=6;
+      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+          now, xVolts, yVolts, xPercent, yPercent, "stop-200");
+      wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
+      wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
+      mcp23x17_digitalWrite(lTrackForward, LOW);
+      mcp23x17_digitalWrite(rTrackForward, LOW);
+      mcp23x17_digitalWrite(lTrackReverse, LOW);
+      mcp23x17_digitalWrite(rTrackReverse, LOW);
+    }
   }
 
 
