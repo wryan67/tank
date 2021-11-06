@@ -851,8 +851,17 @@ void throttleControl(long long &now) {
       mcp23x17_digitalWrite(rTrackReverse, LOW);
     }
   } else if (yPercent>abs(xPercent)) {  // move forward
-    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
-    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
+    int lp = (255-abs(yPercent*255))/2;
+    int rp = (255-abs(yPercent*255))/2;
+
+    if (xPercent>0) {
+      lp+=abs(xPercent*255);
+    } else {
+      rp+=abs(xPercent*255);
+    }
+
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, lp);
+    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, rp);
     if (dd!=2) {
       dd=2;
       logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
