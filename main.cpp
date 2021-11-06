@@ -851,29 +851,29 @@ void throttleControl(long long &now) {
       mcp23x17_digitalWrite(rTrackReverse, LOW);
     }
   } else if (yPercent>abs(xPercent) || yPercent>=0.95) {  // move forward
-    int lp = (255-abs(yPercent*255))/3;
-    int rp = (255-abs(yPercent*255))/3;
+    int lp = (255-abs(yPercent*255));
+    int rp = (255-abs(yPercent*255));
 
     if (xPercent<0) {
       lp+=abs(xPercent*255);
     } else {
       rp+=abs(xPercent*255);
     }
+      // logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+      //     now, xVolts, yVolts, xPercent, yPercent, 255-lp,255-rp, "move forward");
 
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, lp);
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, rp);
     if (dd!=2) {
       dd=2;
-      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-          now, xVolts, yVolts, xPercent, yPercent, "move forward");
       mcp23x17_digitalWrite(lTrackForward, HIGH);
       mcp23x17_digitalWrite(rTrackForward, HIGH);
       mcp23x17_digitalWrite(lTrackReverse, LOW);
       mcp23x17_digitalWrite(rTrackReverse, LOW);
     }
   } else if (yPercent<-abs(xPercent) || yPercent<=-0.95) { // move backward
-      int lp = (255-abs(yPercent*255))/2;
-    int rp = (255-abs(yPercent*255))/2;
+    int lp = (255-abs(yPercent*255));
+    int rp = (255-abs(yPercent*255));
 
     if (xPercent<0) {
       lp+=abs(xPercent*255);
