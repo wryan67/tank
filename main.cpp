@@ -659,7 +659,7 @@ void neopixel_setup() {
     }
     neopixel_render();
 
-    neopixel_colortest();
+    // neopixel_colortest();
 
 }
 
@@ -859,12 +859,13 @@ void throttleControl(long long &now) {
     } else {
       rp+=abs(xPercent*255);
     }
-      // logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
-      //     now, xVolts, yVolts, xPercent, yPercent, 255-lp,255-rp, "move forward");
 
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, lp);
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, rp);
     if (dd!=2) {
+      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+          now, xVolts, yVolts, xPercent, yPercent, 255-lp,255-rp, "move forward");
+
       dd=2;
       mcp23x17_digitalWrite(lTrackForward, HIGH);
       mcp23x17_digitalWrite(rTrackForward, HIGH);
@@ -893,53 +894,87 @@ void throttleControl(long long &now) {
       mcp23x17_digitalWrite(rTrackReverse, HIGH);     
     }
   } else if (xPercent>abs(yPercent)) { // turn right
-    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
-    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
-    if (yPercent>0) {          
-      if (dd!=24) {
-        dd=24;
-        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-            now, xVolts, yVolts, xPercent, yPercent, "right turn-100");
+    // if (yPercent>0) {          
+    // wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
+    // wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
+    //   if (dd!=24) {
+    //     dd=24;
+    //     logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+    //         now, xVolts, yVolts, xPercent, yPercent, "right turn-100");
+    //     mcp23x17_digitalWrite(lTrackForward, LOW);
+    //     mcp23x17_digitalWrite(rTrackForward, HIGH);
+    //     mcp23x17_digitalWrite(lTrackReverse, HIGH);
+    //     mcp23x17_digitalWrite(rTrackReverse, LOW);     
+    //   }
+    // } else {
+    //   if (dd!=34) {
+    //     dd=34;
+    //     logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+    //         now, xVolts, yVolts, xPercent, yPercent, "right turn-200");
+    //     mcp23x17_digitalWrite(lTrackForward, HIGH);
+    //     mcp23x17_digitalWrite(rTrackForward, LOW);
+    //     mcp23x17_digitalWrite(lTrackReverse, LOW);
+    //     mcp23x17_digitalWrite(rTrackReverse, HIGH);
+    //   }
+    // }
+
+      int left  = 255-abs(xPercent*255);
+      int right = 255-abs(xPercent*255) + abs(yPercent*255);
+      wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, left);
+      wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, right);
+
+      if (dd!=4) {
+        dd=4;
+        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+          now, xVolts, yVolts, xPercent, yPercent, left,right, "turn right");
+
         mcp23x17_digitalWrite(lTrackForward, LOW);
         mcp23x17_digitalWrite(rTrackForward, HIGH);
         mcp23x17_digitalWrite(lTrackReverse, HIGH);
-        mcp23x17_digitalWrite(rTrackReverse, LOW);     
+        mcp23x17_digitalWrite(rTrackReverse, LOW);
       }
-    } else {
-      if (dd!=34) {
-        dd=34;
-        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-            now, xVolts, yVolts, xPercent, yPercent, "right turn-200");
-        mcp23x17_digitalWrite(lTrackForward, HIGH);
-        mcp23x17_digitalWrite(rTrackForward, LOW);
-        mcp23x17_digitalWrite(lTrackReverse, LOW);
-        mcp23x17_digitalWrite(rTrackReverse, HIGH);
-      }
-    }
   } else if (xPercent<-abs(yPercent)) { // turn left
-    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
-    wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
-    if (yPercent>0) {
-      if (dd!=25) {
-        dd=25;
-        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-            now, xVolts, yVolts, xPercent, yPercent, "left turn-100");
+      int right = 255-abs(xPercent*255);
+      int left  = 255-abs(xPercent*255) + abs(yPercent*255);
+      wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, left);
+      wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, right);
+
+      if (dd!=5) {
+        dd=5;
+        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+          now, xVolts, yVolts, xPercent, yPercent, left,right, "turn left");
+
         mcp23x17_digitalWrite(lTrackForward, HIGH);
         mcp23x17_digitalWrite(rTrackForward, LOW);
         mcp23x17_digitalWrite(lTrackReverse, LOW);
         mcp23x17_digitalWrite(rTrackReverse, HIGH);
-      } 
-    } else {       
-      if (dd!=35) {
-        dd=35;
-        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-            now, xVolts, yVolts, xPercent, yPercent, "left turn-200");
-        mcp23x17_digitalWrite(lTrackForward, LOW);
-        mcp23x17_digitalWrite(rTrackForward, HIGH);
-        mcp23x17_digitalWrite(lTrackReverse, HIGH);
-        mcp23x17_digitalWrite(rTrackReverse, LOW);     
       }
-    }
+
+    // if (yPercent>0) {
+    //   wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, abs(yPercent*255));
+    //   wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
+    //   if (dd!=25) {
+    //     dd=25;
+    //     logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+    //         now, xVolts, yVolts, xPercent, yPercent, "left turn-100");
+    //     mcp23x17_digitalWrite(lTrackForward, HIGH);
+    //     mcp23x17_digitalWrite(rTrackForward, LOW);
+    //     mcp23x17_digitalWrite(lTrackReverse, LOW);
+    //     mcp23x17_digitalWrite(rTrackReverse, HIGH);
+    //   } 
+    // } else {       
+    //   wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
+    //   wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
+    //   if (dd!=35) {
+    //     dd=35;
+    //     logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+    //         now, xVolts, yVolts, xPercent, yPercent, "left turn-200");
+    //     mcp23x17_digitalWrite(lTrackForward, LOW);
+    //     mcp23x17_digitalWrite(rTrackForward, HIGH);
+    //     mcp23x17_digitalWrite(lTrackReverse, HIGH);
+    //     mcp23x17_digitalWrite(rTrackReverse, LOW);     
+    //   }
+    // }
   } else {
     if (dd!=6) {
       dd=6;
