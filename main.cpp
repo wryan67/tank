@@ -193,13 +193,15 @@ void delayedCannonShutdown() {
   mcp23x17_digitalWrite(cannonChargingPin, HIGH);
   cannonActivated=false;
 }
+
+
 void fireCannon() {
   if (fireInTheHole) {
     return;
   } else {
     fireInTheHole=true;
   }
-
+  usleep(2000);
 
   logger.info("powering cannon");
   mcp23x17_digitalWrite(cannonFirePin, HIGH);
@@ -744,7 +746,7 @@ void turretAspect() {
 
     dutyCycle = a3*b1+turretFullCCW;
 
-    if (abs(dutyCycle-lastCycle)>3) {
+    if (abs(dutyCycle-lastCycle)>3 && !fireInTheHole) {
       lastCycle=dutyCycle;
       setServoDutyCycle(turretAspectControlChannel, dutyCycle);
       float dutyCyclePercent=(float)dutyCycle/4096;
