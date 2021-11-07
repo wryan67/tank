@@ -30,8 +30,9 @@ bool doCalibration=false;
 bool isMotorOn=false;
 
 bool fireInTheHole=false;
-bool interruptCharging=true;
+bool interruptCharging=false;
 bool cannonActivated=false;
+bool movingTurret=false;
 
 Logger     logger("main");
 
@@ -202,6 +203,9 @@ void fireCannon() {
     fireInTheHole=true;
   }
   usleep(2000);
+  while (movingTurret) {
+    usleep(500);
+  }
 
   logger.info("powering cannon");
   mcp23x17_digitalWrite(cannonFirePin, HIGH);
@@ -211,9 +215,10 @@ void fireCannon() {
     usleep(2000);
   }
   if (interruptCharging) {
-    mcp23x17_digitalWrite(cannonChargingPin,HIGH);
-    fireInTheHole=false;
     interruptCharging=false;
+    mcp23x17_digitalWrite(cannonChargingPin,HIGH);
+    logger.info("charging interrupted");
+    fireInTheHole=false;
     return;
   }
 
@@ -227,6 +232,7 @@ void fireCannon() {
   usleep(200*1000); // 200 ms fire time;
   mcp23x17_digitalWrite(cannonFirePin,HIGH);
 
+  logger.info("cannon discharged");
   fireInTheHole=false;
 }
 
@@ -678,6 +684,7 @@ void triggerAction(int value) {
   if (value==0) {
     mcp23x17_digitalWrite(cannonFirePin, LOW);
   } else {
+    interruptCharging=true;
     mcp23x17_digitalWrite(cannonFirePin, HIGH);
   }
   triggerActivated=false;
@@ -686,7 +693,6 @@ void triggerAction(int value) {
 void cannonTriggerActivated(MCP23x17_GPIO gpio, int value) {
   if (!triggerActivated) {
     triggerActivated=true;
-    interruptCharging=true;
 
     thread(triggerAction,value).detach();
   }
@@ -735,6 +741,8 @@ void turretAspect() {
     if (fireInTheHole) {
       usleep(25*1000);
       continue;
+    } else {
+      usleep(1000);
     }
 
     float volts=ads1115Volts[0][turretAspectChannel];
@@ -746,11 +754,14 @@ void turretAspect() {
 
     dutyCycle = a3*b1+turretFullCCW;
 
+
     if (abs(dutyCycle-lastCycle)>3 && !fireInTheHole) {
+      movingTurret=true;
       lastCycle=dutyCycle;
       setServoDutyCycle(turretAspectControlChannel, dutyCycle);
       float dutyCyclePercent=(float)dutyCycle/4096;
-      logger.info("turret aspect volts=%f;  duty cycle: %5.2f", volts, dutyCyclePercent*100);
+      logger.info("turret aspect volts=%f;  duty cycle: %5.2f  fireInTheHole: %d", volts, dutyCyclePercent*100, fireInTheHole);
+      movingTurret=false;
     }
   }
 }
@@ -809,7 +820,7 @@ directionType direction=undetermined;
 directionType trackAction=goStraight;
 int dd=-1;
 
-void throttleControl(long long &now) {
+void throttleControl() {
 //@@
   float xVolts = ads1115Volts[0][throttleChannels[xChannel]];
   float yVolts = ads1115Volts[0][throttleChannels[yChannel]];
@@ -840,7 +851,7 @@ void throttleControl(long long &now) {
   // if (yPercent<0.95) yPercent=-1;
 
 
-  // printf("%lld <%5.3f,%5.3f> <%5.2f,%5.2f>\r", now, xVolts, yVolts, xPercent, yPercent);
+  // printf("<%5.3f,%5.3f> <%5.2f,%5.2f>\r", xVolts, yVolts, xPercent, yPercent);
 // return;
 
   float lThrottle=0;
@@ -851,8 +862,8 @@ void throttleControl(long long &now) {
   if (yPercent==0 && xPercent==0) {
     if (dd!=1) {
       dd=1;
-      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-          now, xVolts, yVolts, xPercent, yPercent, "stop-100");
+      logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+          xVolts, yVolts, xPercent, yPercent, "stop-100");
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
       mcp23x17_digitalWrite(lTrackForward, LOW);
@@ -873,8 +884,8 @@ void throttleControl(long long &now) {
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, lp);
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, rp);
     if (dd!=2) {
-      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
-          now, xVolts, yVolts, xPercent, yPercent, 255-lp,255-rp, "move forward");
+      logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+          xVolts, yVolts, xPercent, yPercent, 255-lp,255-rp, "move forward");
 
       dd=2;
       mcp23x17_digitalWrite(lTrackForward, HIGH);
@@ -896,37 +907,15 @@ void throttleControl(long long &now) {
 
     if (dd!=3) {
       dd=3;
-      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-          now, xVolts, yVolts, xPercent, yPercent, "move backward");
+      logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+          xVolts, yVolts, xPercent, yPercent, "move backward");
       mcp23x17_digitalWrite(lTrackForward, LOW);
       mcp23x17_digitalWrite(rTrackForward, LOW);
       mcp23x17_digitalWrite(lTrackReverse, HIGH);
       mcp23x17_digitalWrite(rTrackReverse, HIGH);     
     }
   } else if (xPercent>abs(yPercent)) { // turn right
-    // if (yPercent>0) {          
-    // wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
-    // wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
-    //   if (dd!=24) {
-    //     dd=24;
-    //     logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-    //         now, xVolts, yVolts, xPercent, yPercent, "right turn-100");
-    //     mcp23x17_digitalWrite(lTrackForward, LOW);
-    //     mcp23x17_digitalWrite(rTrackForward, HIGH);
-    //     mcp23x17_digitalWrite(lTrackReverse, HIGH);
-    //     mcp23x17_digitalWrite(rTrackReverse, LOW);     
-    //   }
-    // } else {
-    //   if (dd!=34) {
-    //     dd=34;
-    //     logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-    //         now, xVolts, yVolts, xPercent, yPercent, "right turn-200");
-    //     mcp23x17_digitalWrite(lTrackForward, HIGH);
-    //     mcp23x17_digitalWrite(rTrackForward, LOW);
-    //     mcp23x17_digitalWrite(lTrackReverse, LOW);
-    //     mcp23x17_digitalWrite(rTrackReverse, HIGH);
-    //   }
-    // }
+
 
       int left  = 255-abs(xPercent*255);
       int right = 255-abs(xPercent*255) + abs(yPercent*255);
@@ -935,8 +924,8 @@ void throttleControl(long long &now) {
 
       if (dd!=4) {
         dd=4;
-        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
-          now, xVolts, yVolts, xPercent, yPercent, left,right, "turn right");
+        logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+          xVolts, yVolts, xPercent, yPercent, left,right, "turn right");
 
         mcp23x17_digitalWrite(lTrackForward, LOW);
         mcp23x17_digitalWrite(rTrackForward, HIGH);
@@ -951,8 +940,8 @@ void throttleControl(long long &now) {
 
       if (dd!=5) {
         dd=5;
-        logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
-          now, xVolts, yVolts, xPercent, yPercent, left,right, "turn left");
+        logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+          xVolts, yVolts, xPercent, yPercent, left,right, "turn left");
 
         mcp23x17_digitalWrite(lTrackForward, HIGH);
         mcp23x17_digitalWrite(rTrackForward, LOW);
@@ -960,36 +949,11 @@ void throttleControl(long long &now) {
         mcp23x17_digitalWrite(rTrackReverse, HIGH);
       }
 
-    // if (yPercent>0) {
-    //   wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, abs(yPercent*255));
-    //   wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
-    //   if (dd!=25) {
-    //     dd=25;
-    //     logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-    //         now, xVolts, yVolts, xPercent, yPercent, "left turn-100");
-    //     mcp23x17_digitalWrite(lTrackForward, HIGH);
-    //     mcp23x17_digitalWrite(rTrackForward, LOW);
-    //     mcp23x17_digitalWrite(lTrackReverse, LOW);
-    //     mcp23x17_digitalWrite(rTrackReverse, HIGH);
-    //   } 
-    // } else {       
-    //   wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255-abs(yPercent*255));
-    //   wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255-abs(yPercent*255));
-    //   if (dd!=35) {
-    //     dd=35;
-    //     logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-    //         now, xVolts, yVolts, xPercent, yPercent, "left turn-200");
-    //     mcp23x17_digitalWrite(lTrackForward, LOW);
-    //     mcp23x17_digitalWrite(rTrackForward, HIGH);
-    //     mcp23x17_digitalWrite(lTrackReverse, HIGH);
-    //     mcp23x17_digitalWrite(rTrackReverse, LOW);     
-    //   }
-    // }
   } else {
     if (dd!=6) {
       dd=6;
-      logger.info("%lld <%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-          now, xVolts, yVolts, xPercent, yPercent, "stop-200");
+      logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+          xVolts, yVolts, xPercent, yPercent, "stop-200");
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
       mcp23x17_digitalWrite(lTrackForward, LOW);
@@ -1189,17 +1153,16 @@ int main(int argc, char **argv)
       batteryAlert();
     }
 
-    long long now=currentTimeMillis();
-
     float fireVolts=ads1115Volts[1][fireChannel];
 
-    if (!fireInTheHole && fireVolts>0.30) {
-      logger.info("%lld fireVolts=%12.6f", now,  fireVolts);
+    if (fireVolts>0.30 && !fireInTheHole) {
+      logger.info("fireVolts=%12.6f", fireVolts);
       thread(fireCannon).detach();
+      usleep(2000);
     }
     
 
-    throttleControl(now);
+    throttleControl();
 
     fflush(stdout);
   }
