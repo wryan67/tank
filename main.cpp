@@ -30,6 +30,7 @@ bool doCalibration=false;
 bool isMotorOn=false;
 
 bool fireInTheHole=false;
+bool interruptCharging=true;
 bool cannonActivated=false;
 
 Logger     logger("main");
@@ -204,8 +205,14 @@ void fireCannon() {
   mcp23x17_digitalWrite(cannonFirePin, HIGH);
   mcp23x17_digitalWrite(cannonChargingPin,LOW);
 
-  while (cannonVolts<46.5) {
+  while (cannonVolts<46.5 && !interruptCharging) {
     usleep(2000);
+  }
+  if (interruptCharging) {
+    mcp23x17_digitalWrite(cannonChargingPin,HIGH);
+    fireInTheHole=false;
+    interruptCharging=false;
+    return;
   }
 
 //  thread(delayedcannonShutdown).detach();
@@ -677,6 +684,7 @@ void triggerAction(int value) {
 void cannonTriggerActivated(MCP23x17_GPIO gpio, int value) {
   if (!triggerActivated) {
     triggerActivated=true;
+    interruptCharging=true;
 
     thread(triggerAction,value).detach();
   }
@@ -1171,10 +1179,6 @@ int main(int argc, char **argv)
 
   thread(turretAspect).detach();
   thread(turretColor).detach();
-
-  // while (true) {
-  //   usleep(1000*1000);
-  // }
 
   while (true) {
     if (deadBattery) {
