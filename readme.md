@@ -24,3 +24,9 @@ Tank
 * https://github.com/wryan67/neopixel_rpi_lib.git
 * https://github.com/wryan67/mcp23x17_rpi_lib.git
 * https://github.com/wryan67/ads1115_rpi_lib.git
+
+
+## Raspi-config interfaces
+
+* camera
+* i2c
