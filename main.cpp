@@ -1155,7 +1155,7 @@ int main(int argc, char **argv)
 
     float fireVolts=ads1115Volts[1][fireChannel];
 
-    if (fireVolts>0.30 && !fireInTheHole) {
+    if (fireVolts>0.32 && !fireInTheHole) {
       logger.info("fireVolts=%12.6f", fireVolts);
       thread(fireCannon).detach();
       usleep(2000);
