@@ -755,7 +755,7 @@ void turretAspect() {
     dutyCycle = a3*b1+turretFullCCW;
 
 
-    if (abs(dutyCycle-lastCycle)>3 && !fireInTheHole) {
+    if (abs(dutyCycle-lastCycle)>5 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
       setServoDutyCycle(turretAspectControlChannel, dutyCycle);
