@@ -34,6 +34,8 @@ bool interruptCharging=false;
 bool cannonActivated=false;
 bool movingTurret=false;
 
+float cannonReleaseVoltage=46.4;  // was 46.5
+
 Logger     logger("main");
 
 /**************************************
@@ -211,7 +213,7 @@ void fireCannon() {
   mcp23x17_digitalWrite(cannonFirePin, HIGH);
   mcp23x17_digitalWrite(cannonChargingPin,LOW);
 
-  while (cannonVolts<46.5 && !interruptCharging) {
+  while (cannonVolts<cannonReleaseVoltage && !interruptCharging) {
     usleep(2000);
   }
   if (interruptCharging) {
