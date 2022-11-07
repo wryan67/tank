@@ -71,7 +71,7 @@ int  spiSpeed = 500000;
 int  channelType = MCP3008_SINGLE;
 static volatile float mcp3008RefVolts = 5.0;
 float mcp3008Volts[MCP3008_CHANNELS];
-
+int  txs0108_oe=6;
 
 int xChannel=7;
 int yChannel=6;
@@ -1180,6 +1180,9 @@ int main(int argc, char **argv)
   if (!pca9635Init()) {
     return 2;
   }
+
+  pinMode(txs0108_oe,OUTPUT);
+  digitalWrite(txs0108_oe,1);
 
 	if (!setupMCP3008()) {
 		printf("mcp3008 setup failed\n");
