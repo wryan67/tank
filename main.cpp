@@ -1189,7 +1189,6 @@ int main(int argc, char **argv)
 		exit(2);
 	}
 
-		printf("mcp3008 threading...\n");
 
   thread(readMCP3008Channels).detach();
 
