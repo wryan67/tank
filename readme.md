@@ -30,3 +30,4 @@ Tank
 
 * camera
 * i2c
+* spi
