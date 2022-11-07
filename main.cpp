@@ -1,3 +1,4 @@
+// standard includes
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -10,10 +11,12 @@
 #include <limits>
 
 
-
+// engineering 
 #include <wiringPi.h>
 #include <wiringPiI2C.h>
+#include <wiringPiSPI.h>
 
+// devices
 #include <ads1115rpi.h>
 #include <mcp23x17rpi.h>
 #include <pca9635rpi.h>
@@ -21,6 +24,7 @@
 #include <neopixel.h>  
 #include <log4pi.h>
 
+#include "mcp3008.h"
 
 
 using namespace std;
@@ -52,11 +56,37 @@ int pca9685fd = -1;
 
 int turretAspectControlChannel=0;
 
+/**************************************
+ * 
+ *  R/C Receiver (mcp3008) channels
+ * 
+ *************************************/
+
+// SPI Options
+bool loadSPIDriver = false;
+int  spiHandle = -1;
+int  spiChannel = 0;
+bool spiOverride = false;
+int  spiSpeed = 500000;
+int  channelType = MCP3008_SINGLE;
+static volatile float mcp3008RefVolts = 5.0;
+float mcp3008Volts[MCP3008_CHANNELS];
+
+
+int xChannel=7;
+int yChannel=6;
+int cannonElevationChannel=5;
+int turretAspectChannel=4;
+
+int fireChannel=3;  // right rocker
+int push2talkChannel=2;
+int leftRockerChannel=1;
+int leftDialChannel=0;
 
 
 /**************************************
  * 
- *  ADS1115   a2d chips
+ *  ADS1115   a2d chip
  * 
  *************************************/
 #define ADS1115_MaxBanks    2
@@ -64,24 +94,18 @@ int turretAspectControlChannel=0;
 
 float ads1115Volts[ADS1115_MaxBanks][ADS1115_MaxChannels];
 
-int ADS1115_ADDRESS1=0x48;
-int ADS1115_ADDRESS2=0x49;
+int ADS1115_ADDRESS1=0x49;
 int a2dHandle1;
-int a2dHandle2;
 
 float vRef = 5.0;
 int   gain = 4;
  
 // 0x48 channels
-int xChannel=0;
-int yChannel=1;
-int turretAspectChannel=3;
-int cannonElevationChannel=2;
+
 
 // 0x49 channels
 int cannonVoltsChannel=0;
 int batteryChannel=1;
-int fireChannel=2;
 int fiveVSource=3;
 
 float cannonVolts=0;
@@ -176,6 +200,21 @@ bool deadBattery=false;
  * 
  *--------------------------------------
  */
+
+unsigned int readMCP3008Channel(int channel)
+{
+    unsigned char buffer[3] = { 1, 0, 0 };
+	buffer[1] = (channelType + channel) << 4;
+
+    wiringPiSPIDataRW(spiChannel, buffer, 3);
+
+	return ((buffer[1] & 3) << 8) + buffer[2];   
+}
+float getMCP3008Volts(int channel) {
+    auto bits = readMCP3008Channel(channel);
+	return ((bits)*mcp3008RefVolts) / 1024.0;
+}
+
 
 void setServoDutyCycle(int pin, int speed) {
 	if (speed < 1) {
@@ -311,7 +350,9 @@ int turretFullCCW=turretCenter+210; //  95
 
 
 void getRange(rangeType range[], int xChannel, int yChannel, const char *message) {
+
   printf("%s",message);
+  printf("\n xChannel=%d; yChannel=%d\n", xChannel, yChannel);
   getchar();
 
   int channels[2] = {xChannel, yChannel};
@@ -335,8 +376,7 @@ void getRange(rangeType range[], int xChannel, int yChannel, const char *message
 
     int startTime=currentTimeMillis();
     for (int i=0;i<throttleChannelCount;++i) {
-      float v=readVoltageSingleShot(a2dHandle1, channels[i], gain);
-
+      float v=mcp3008Volts[channels[i]];
       if (v<0.1) {
         fprintf(stderr,"unable to detect joystick, is it on and paired?\n");
         exit(2);
@@ -374,8 +414,8 @@ void printRange(rangeType range[], const char *message) {
 
 int calibrate() {
 
-  int c1=throttleChannels[xChannel];
-  int c2=throttleChannels[yChannel];
+  int c1=throttleChannels[xThrottle];
+  int c2=throttleChannels[yThrottle];
   
   printf("\n");
   getRange(idleThrottle, c1,c2, "center right joystick (throttle), then press enter");
@@ -630,7 +670,7 @@ void batteryCheck() {
     float totalVolts=0;
     for (int i=0;i<readCount;++i) {
         usleep(10*1000);
-        float volts = ads1115Volts[1][batteryChannel];
+        float volts = ads1115Volts[0][batteryChannel];
         float batteryVolts=((5100+200)*volts)/200;
         // logger.info("--ads volts=%f; battery volts: %6.3f", volts, batteryVolts); 
 
@@ -640,7 +680,7 @@ void batteryCheck() {
           } else {
             usleep(100*1000);
           }
-          volts = ads1115Volts[1][batteryChannel];
+          volts = ads1115Volts[0][batteryChannel];
         }
         totalVolts+=volts;
     }
@@ -731,6 +771,19 @@ void readAnalogChannels(int bank, int handle, int gain) {
   }
 }
 
+void readMCP3008Channels() {
+  logger.info("thread started--read mcp3008 channels");
+  while (true) {
+    for (int i=0;i<MCP3008_CHANNELS;++i) {
+      mcp3008Volts[i]=getMCP3008Volts(i);
+    }
+    delay(1);
+  }
+}
+
+
+
+
 void turretAspect() {
   int dutyCycle=turretCenter;
   int lastCycle=0;
@@ -747,7 +800,7 @@ void turretAspect() {
       usleep(1000);
     }
 
-    float volts=ads1115Volts[0][turretAspectChannel];
+    float volts=mcp3008Volts[turretAspectChannel];
 
     float a1 = maxTurretAspectVoltage-minTurretAspectVoltage;
     float a2 = volts - minTurretAspectVoltage;
@@ -776,7 +829,7 @@ void turretColor() {
 
   long c;
   while (true) {
-    float adsVolts=ads1115Volts[1][cannonVoltsChannel];
+    float adsVolts=ads1115Volts[0][cannonVoltsChannel];
     cannonVolts=adsVolts*100;
 
     float percent = cannonVolts/50;
@@ -824,8 +877,8 @@ int dd=-1;
 
 void throttleControl() {
 //@@
-  float xVolts = ads1115Volts[0][throttleChannels[xChannel]];
-  float yVolts = ads1115Volts[0][throttleChannels[yChannel]];
+  float xVolts = mcp3008Volts[throttleChannels[xThrottle]];
+  float yVolts = mcp3008Volts[throttleChannels[yThrottle]];
 
   float xMin=minThrottle[xThrottle].avg;
   float xMax=maxThrottle[xThrottle].avg;
@@ -973,7 +1026,7 @@ void throttleControlOld(long long &now) {
 
 
     for (int i=0;i<throttleChannelCount;++i) {
-      volts[i]=ads1115Volts[0][throttleChannels[i]];
+      volts[i]=mcp3008Volts[throttleChannels[i]];
     }
 
     // printf("%lld %12.6f %12.6f %12.6f %12.6f\r", 
@@ -1055,6 +1108,32 @@ void throttleControlOld(long long &now) {
 
 }
 
+bool setupMCP3008() {
+
+
+	// The speed parameter is an integer in the range 500,000 through 32,000,000 and represents the SPI clock speed in Hz
+
+
+	if ((spiHandle = wiringPiSPISetup(spiChannel, spiSpeed)) < 0)
+	{
+		fprintf(stderr, "opening SPI bus failed: %s\n", strerror(errno));
+		return false;
+	}
+
+  double volts=0.0;
+  for (int i=0;i<MCP3008_CHANNELS;++i) {
+    volts+=getMCP3008Volts(i);
+  }
+
+  if (volts==0.0) {
+    fprintf(stderr, "mcp3008 not detected\n");
+    return false;
+  }
+
+	return true;
+}
+
+
 int main(int argc, char **argv)
 {  
   if (!commandLineOptions(argc, argv)) {
@@ -1071,6 +1150,7 @@ int main(int argc, char **argv)
 		return false;
 	}
 
+  
 
   printf("use -h to get help on command line options\n");
   printf("accessing ads1115 chip on i2c address 0x%02x\n", ADS1115_ADDRESS1);
@@ -1101,6 +1181,23 @@ int main(int argc, char **argv)
     return 2;
   }
 
+	if (!setupMCP3008()) {
+		printf("mcp3008 setup failed\n");
+		exit(2);
+	}
+
+		printf("mcp3008 threading...\n");
+
+  thread(readMCP3008Channels).detach();
+
+  // while (true) {
+  //   for (int i=0;i<MCP3008_CHANNELS;++i) {
+  //     printf("%d: %5.3f | ", i, mcp3008Volts[i]);
+  //   }
+  //   printf("\r");
+  //   delay(100);
+  // }
+
 
 /*    ADS11115    */
 // o = operation mode
@@ -1112,7 +1209,6 @@ int main(int argc, char **argv)
 //                1111 0101 1000 0011
 //                1111 0101 1000 0011
   a2dHandle1 = getADS1115Handle(ADS1115_ADDRESS1);
-  a2dHandle2 = getADS1115Handle(ADS1115_ADDRESS2);
   float max=getADS1115MaxGain(gain);
 
   if (doCalibration) {
@@ -1121,7 +1217,6 @@ int main(int argc, char **argv)
   readCalibration();
 
   thread(readAnalogChannels,0,a2dHandle1,gain).detach();
-  thread(readAnalogChannels,1,a2dHandle2,gain).detach();
  
 
   neopixel_setup();
@@ -1130,7 +1225,7 @@ int main(int argc, char **argv)
   long c=0;
   int  loop=0;
 
-  while (ads1115Volts[0][yChannel]<0.1) {
+  while (mcp3008Volts[yChannel]<0.1) {
     if (++c%10==0) ++loop;
  
     pca9635SetDutyCycle(pca9635Handle, joystickAlertLEDChannel, 50*(loop%2));
@@ -1155,7 +1250,7 @@ int main(int argc, char **argv)
       batteryAlert();
     }
 
-    float fireVolts=ads1115Volts[1][fireChannel];
+    float fireVolts=mcp3008Volts[fireChannel];
 
     if (fireVolts>0.32 && !fireInTheHole) {
       logger.info("fireVolts=%12.6f", fireVolts);
