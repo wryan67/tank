@@ -777,7 +777,7 @@ void readMCP3008Channels() {
     for (int i=0;i<MCP3008_CHANNELS;++i) {
       mcp3008Volts[i]=getMCP3008Volts(i);
     }
-    delay(1);
+    usleep(1000);
   }
 }
 
