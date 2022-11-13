@@ -1133,6 +1133,98 @@ bool setupMCP3008() {
 	return true;
 }
 
+int soundPid=0;
+int headsetDevice=2;
+int tankSoundDevice=1;
+
+thread soundThread;
+
+void killSound() {
+  char cmd[1024];
+
+  if (soundPid) {
+    logger.info("killing soundpid=%d",soundPid);
+    sprintf(cmd,"kill %d",soundPid);
+    system("kill `ps -ef | grep gst-launch | awk '{print $2}'`");
+    usleep(250*1000);
+  }
+
+}
+
+void activateSound(string cmd) {
+  int     pid;
+  char    line[256];
+  size_t  len=0;
+  ssize_t read;
+  char tmpstr[cmd.length()+64];
+
+  killSound();
+
+  sprintf(tmpstr,"ksh '%s >/dev/null 2>&1 & echo $!'",cmd.c_str());
+
+  logger.info("activate sound cmd: %s",tmpstr);
+
+  FILE *fp=popen(tmpstr,"r");
+
+  fgets(line,sizeof(line),fp);
+  soundPid=atoi(line);  
+  fclose(fp);
+
+  logger.info("sound pid = %d",soundPid);
+}
+
+
+
+bool talk() {
+  logger.info("talk activated");
+
+  char cmd[2048];
+  sprintf(cmd,"gst-launch-1.0 alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! queue2 ! alsasink device=dmix:%d,0", headsetDevice, tankSoundDevice);
+
+  thread(activateSound,string(cmd)).detach();
+  return true;
+}
+
+bool listen() {
+  logger.info("listen activated");
+
+  char cmd[2048];
+  sprintf(cmd,"gst-launch-1.0 alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! queue2 ! alsasink device=dmix:%d,0", tankSoundDevice, headsetDevice);
+
+  thread(activateSound,string(cmd)).detach();
+
+  return false;
+}
+
+
+
+
+void push2talk() {
+  logger.info("push2talk activated");
+  bool talking=true;
+  
+  while (true) {
+    usleep(10*1000);
+    float talkVolts=mcp3008Volts[push2talkChannel];
+
+    // logger.info("push2talk volts: %5.2f",talkVolts);
+
+    if (talkVolts>0.28) {
+      // talking
+      if (!talking) {
+        talking=talk();
+      }
+
+    } else {
+      // listening
+      if (talking) {
+        talking=listen();
+      }
+    }
+
+  }
+  
+}
 
 int main(int argc, char **argv)
 {  
@@ -1150,7 +1242,7 @@ int main(int argc, char **argv)
 		return false;
 	}
 
-  
+  thread(push2talk).detach();
 
   printf("use -h to get help on command line options\n");
   printf("accessing ads1115 chip on i2c address 0x%02x\n", ADS1115_ADDRESS1);
