@@ -99,7 +99,7 @@ int turretAspectChannel=4;
 
 int fireChannel=3;  // right rocker
 int push2talkChannel=2;
-int leftRockerChannel=1;
+int hornChannel=1;
 int leftDialChannel=0;
 
 
@@ -1152,98 +1152,6 @@ bool setupMCP3008() {
 	return true;
 }
 
-// int soundPid=0;
-// int headsetDevice=2;
-// int tankSoundDevice=1;
-
-// thread soundThread;
-
-// void killSound() {
-//   char cmd[1024];
-
-//   if (soundPid) {
-//     logger.info("killing soundpid=%d",soundPid);
-//     sprintf(cmd,"kill %d",soundPid);
-//     system("kill `ps -ef | grep gst-launch | awk '{print $2}'`");
-//     usleep(250*1000);
-//   }
-
-// }
-
-// void activateSound(string cmd) {
-//   int     pid;
-//   char    line[256];
-//   size_t  len=0;
-//   ssize_t read;
-//   char tmpstr[cmd.length()+64];
-
-//   killSound();
-
-//   sprintf(tmpstr,"ksh '%s >/dev/null 2>&1 & echo $!'",cmd.c_str());
-
-//   logger.info("activate sound cmd: %s",tmpstr);
-
-//   FILE *fp=popen(tmpstr,"r");
-
-//   fgets(line,sizeof(line),fp);
-//   soundPid=atoi(line);  
-//   fclose(fp);
-
-//   logger.info("sound pid = %d",soundPid);
-// }
-
-
-
-// bool talk() {
-//   logger.info("talk activated");
-
-//   char cmd[2048];
-//   sprintf(cmd,"gst-launch-1.0 alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! queue2 ! alsasink device=dmix:%d,0", headsetDevice, tankSoundDevice);
-
-//   thread(activateSound,string(cmd)).detach();
-//   return true;
-// }
-
-// bool listen() {
-//   logger.info("listen activated");
-
-//   char cmd[2048];
-//   sprintf(cmd,"gst-launch-1.0 alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! queue2 ! alsasink device=dmix:%d,0", tankSoundDevice, headsetDevice);
-
-//   thread(activateSound,string(cmd)).detach();
-
-//   return false;
-// }
-
-
-// void push2talk() {
-//   logger.info("push2talk activated");
-//   bool talking=true;
-  
-//   while (true) {
-//     usleep(10*1000);
-//     float talkVolts=mcp3008Volts[push2talkChannel];
-
-//     // logger.info("push2talk volts: %5.2f",talkVolts);
-
-//     if (talkVolts>0.28) {
-//       // talking
-//       if (!talking) {
-//         talking=talk();
-//       }
-
-//     } else {
-//       // listening
-//       if (talking) {
-//         talking=listen();
-//       }
-//     }
-
-//   }
-  
-// }
-
-
 
 gboolean gst_bus_call (GstBus *bus, GstMessage *msg, gpointer data)
 {
@@ -1288,19 +1196,24 @@ void playHeadset2Tank() {
   stopAudio();
   gst_element_set_state(headset2tank, GST_STATE_PLAYING);
 }
-void playDixie() {
+void playFile(const char *filename,float volume) {
+  char tmpstr[4096];
   GstElement *dixie;
   GstBus *bus;
 
+  sprintf(tmpstr,"filesrc location=%s ! decodebin ! audioconvert ! audioresample ! volume volume=%f ! level ! alsasink device=dmix:%d,0",filename,volume,tankSoundDevice);
+
 
   stopAudio();
-  dixie = gst_parse_launch("filesrc location=/home/wryan/sounds/dixie.mp3 ! decodebin ! audioconvert ! audioresample ! volume volume=0.1 ! level ! alsasink device=dmix:1,0", &err);
-  gst_element_set_state(dixie, GST_STATE_PLAYING);
-  bus = gst_element_get_bus(dixie);
+   
+  dixie = gst_parse_launch(tmpstr, &err);
+  gst_element_set_state(dixie, GST_STATE_PLAYING);   bus = gst_element_get_bus(dixie);
+  
   gst_bus_add_watch (bus, gst_bus_call, loop);
   g_main_loop_run(loop);
   playTank2Headset();
 }
+
 
 void gst_init(int argc, char *argv[]) {
   char tmpstr[4096];
@@ -1347,12 +1260,20 @@ void push2talk() {
       }
     }
 
+    if (mcp3008Volts[hornChannel]>0.35) {
+      playFile("/home/wryan/sounds/dixie.mp3",0.3);
+    }
+    if (mcp3008Volts[hornChannel]<0.25) {
+      playFile("/home/wryan/sounds/ahooga.mp3",0.3);
+    }
+
+
   }
   
 }
 
-int main(int argc, char **argv)
-{  
+int main(int argc, char **argv) {  
+  
   if (!commandLineOptions(argc, argv)) {
     return 1;
   }
@@ -1368,7 +1289,6 @@ int main(int argc, char **argv)
 		return false;
 	}
 
-  thread(push2talk).detach();
 
   printf("use -h to get help on command line options\n");
   printf("accessing ads1115 chip on i2c address 0x%02x\n", ADS1115_ADDRESS1);
@@ -1409,6 +1329,9 @@ int main(int argc, char **argv)
 
 
   thread(readMCP3008Channels).detach();
+
+  usleep(100*1000);
+  thread(push2talk).detach();
 
   // while (true) {
   //   for (int i=0;i<MCP3008_CHANNELS;++i) {
