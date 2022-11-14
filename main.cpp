@@ -829,10 +829,14 @@ void turretAspect() {
     dutyCycle = a3*b1+turretFullCCW;
 
 
-    if (abs(dutyCycle-lastCycle)>5 && !fireInTheHole) {
+    if (abs(dutyCycle-lastCycle)>1 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
-      setServoDutyCycle(turretAspectControlChannel, dutyCycle);
+      if (abs(turretCenter-dutyCycle)<20) {
+        setServoDutyCycle(turretAspectControlChannel, turretCenter);
+      } else {
+        setServoDutyCycle(turretAspectControlChannel, dutyCycle);
+      }
       float dutyCyclePercent=(float)dutyCycle/4096;
       logger.info("turret aspect volts=%f;  duty cycle: %5.2f  fireInTheHole: %d", volts, dutyCyclePercent*100, fireInTheHole);
       movingTurret=false;
@@ -936,8 +940,8 @@ void throttleControl() {
   if (yPercent==0 && xPercent==0) {
     if (dd!=1) {
       dd=1;
-      logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-          xVolts, yVolts, xPercent, yPercent, "stop-100");
+      // logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+      //     xVolts, yVolts, xPercent, yPercent, "stop-100");
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
       mcp23x17_digitalWrite(lTrackForward, LOW);
@@ -958,8 +962,8 @@ void throttleControl() {
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, lp);
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, rp);
     if (dd!=2) {
-      logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
-          xVolts, yVolts, xPercent, yPercent, 255-lp,255-rp, "move forward");
+      // logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+      //     xVolts, yVolts, xPercent, yPercent, 255-lp,255-rp, "move forward");
 
       dd=2;
       mcp23x17_digitalWrite(lTrackForward, HIGH);
@@ -998,8 +1002,8 @@ void throttleControl() {
 
       if (dd!=4) {
         dd=4;
-        logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
-          xVolts, yVolts, xPercent, yPercent, left,right, "turn right");
+        // logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+          // xVolts, yVolts, xPercent, yPercent, left,right, "turn right");
 
         mcp23x17_digitalWrite(lTrackForward, LOW);
         mcp23x17_digitalWrite(rTrackForward, HIGH);
