@@ -10,7 +10,8 @@ all:  tank
 
 SYSLIBS=-lm -luuid -pthread
 DEVICELISBS=-lNeoPixelRPi -lwiringPi -lwiringPiADS1115rpi -lwiringPiPCA9635rpi -lwiringPiPca9685 -lwiringPiMCP23x17rpi
-LIBS=${SYSLIBS} ${DEVICELISBS} -llog4pi 
+GSTLIB=`pkg-config --cflags --libs gstreamer-1.0`
+LIBS=${SYSLIBS} ${DEVICELISBS} ${GSTLIB} -llog4pi 
 
 
 tank: main.cpp 

@@ -10,6 +10,9 @@
 #include <limits.h>
 #include <limits>
 
+// sound
+#include <gst/gst.h>
+#include <glib.h>
 
 // engineering 
 #include <wiringPi.h>
@@ -41,6 +44,22 @@ bool movingTurret=false;
 float cannonReleaseVoltage=46.4;  // was 46.5
 
 Logger     logger("main");
+
+/**************************************
+ * 
+ *  gstreamer
+ * 
+ *************************************/
+GstElement *headset2tank;
+GstElement *tank2headset;
+GMainLoop *loop;
+GError *err = NULL;
+
+
+int headsetDevice=2;
+int tankSoundDevice=1;
+
+
 
 /**************************************
  * 
@@ -1133,69 +1152,173 @@ bool setupMCP3008() {
 	return true;
 }
 
-int soundPid=0;
-int headsetDevice=2;
-int tankSoundDevice=1;
+// int soundPid=0;
+// int headsetDevice=2;
+// int tankSoundDevice=1;
 
-thread soundThread;
+// thread soundThread;
 
-void killSound() {
-  char cmd[1024];
+// void killSound() {
+//   char cmd[1024];
 
-  if (soundPid) {
-    logger.info("killing soundpid=%d",soundPid);
-    sprintf(cmd,"kill %d",soundPid);
-    system("kill `ps -ef | grep gst-launch | awk '{print $2}'`");
-    usleep(250*1000);
+//   if (soundPid) {
+//     logger.info("killing soundpid=%d",soundPid);
+//     sprintf(cmd,"kill %d",soundPid);
+//     system("kill `ps -ef | grep gst-launch | awk '{print $2}'`");
+//     usleep(250*1000);
+//   }
+
+// }
+
+// void activateSound(string cmd) {
+//   int     pid;
+//   char    line[256];
+//   size_t  len=0;
+//   ssize_t read;
+//   char tmpstr[cmd.length()+64];
+
+//   killSound();
+
+//   sprintf(tmpstr,"ksh '%s >/dev/null 2>&1 & echo $!'",cmd.c_str());
+
+//   logger.info("activate sound cmd: %s",tmpstr);
+
+//   FILE *fp=popen(tmpstr,"r");
+
+//   fgets(line,sizeof(line),fp);
+//   soundPid=atoi(line);  
+//   fclose(fp);
+
+//   logger.info("sound pid = %d",soundPid);
+// }
+
+
+
+// bool talk() {
+//   logger.info("talk activated");
+
+//   char cmd[2048];
+//   sprintf(cmd,"gst-launch-1.0 alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! queue2 ! alsasink device=dmix:%d,0", headsetDevice, tankSoundDevice);
+
+//   thread(activateSound,string(cmd)).detach();
+//   return true;
+// }
+
+// bool listen() {
+//   logger.info("listen activated");
+
+//   char cmd[2048];
+//   sprintf(cmd,"gst-launch-1.0 alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! queue2 ! alsasink device=dmix:%d,0", tankSoundDevice, headsetDevice);
+
+//   thread(activateSound,string(cmd)).detach();
+
+//   return false;
+// }
+
+
+// void push2talk() {
+//   logger.info("push2talk activated");
+//   bool talking=true;
+  
+//   while (true) {
+//     usleep(10*1000);
+//     float talkVolts=mcp3008Volts[push2talkChannel];
+
+//     // logger.info("push2talk volts: %5.2f",talkVolts);
+
+//     if (talkVolts>0.28) {
+//       // talking
+//       if (!talking) {
+//         talking=talk();
+//       }
+
+//     } else {
+//       // listening
+//       if (talking) {
+//         talking=listen();
+//       }
+//     }
+
+//   }
+  
+// }
+
+
+
+gboolean gst_bus_call (GstBus *bus, GstMessage *msg, gpointer data)
+{
+  GMainLoop *loop = (GMainLoop *) data;
+
+  switch (GST_MESSAGE_TYPE (msg)) {
+
+    case GST_MESSAGE_EOS:
+      g_print ("End of stream\n");
+      g_main_loop_quit (loop);
+      break;
+
+    case GST_MESSAGE_ERROR: {
+      gchar  *debug;
+      GError *error;
+
+      gst_message_parse_error (msg, &error, &debug);
+      g_free (debug);
+
+      g_printerr ("Error: %s\n", error->message);
+      g_error_free (error);
+
+      g_main_loop_quit (loop);
+      break;
+    }
+    default:
+      break;
   }
 
+  return TRUE;
+}
+void stopAudio() {
+  gst_element_set_state(headset2tank, GST_STATE_NULL); 
+  gst_element_set_state(tank2headset, GST_STATE_NULL); 
 }
 
-void activateSound(string cmd) {
-  int     pid;
-  char    line[256];
-  size_t  len=0;
-  ssize_t read;
-  char tmpstr[cmd.length()+64];
+void playTank2Headset() {
+  stopAudio();
+  gst_element_set_state(tank2headset, GST_STATE_PLAYING);
+}
+void playHeadset2Tank() {
+  stopAudio();
+  gst_element_set_state(headset2tank, GST_STATE_PLAYING);
+}
+void playDixie() {
+  GstElement *dixie;
+  GstBus *bus;
 
-  killSound();
 
-  sprintf(tmpstr,"ksh '%s >/dev/null 2>&1 & echo $!'",cmd.c_str());
-
-  logger.info("activate sound cmd: %s",tmpstr);
-
-  FILE *fp=popen(tmpstr,"r");
-
-  fgets(line,sizeof(line),fp);
-  soundPid=atoi(line);  
-  fclose(fp);
-
-  logger.info("sound pid = %d",soundPid);
+  stopAudio();
+  dixie = gst_parse_launch("filesrc location=/home/wryan/sounds/dixie.mp3 ! decodebin ! audioconvert ! audioresample ! volume volume=0.1 ! level ! alsasink device=dmix:1,0", &err);
+  gst_element_set_state(dixie, GST_STATE_PLAYING);
+  bus = gst_element_get_bus(dixie);
+  gst_bus_add_watch (bus, gst_bus_call, loop);
+  g_main_loop_run(loop);
+  playTank2Headset();
 }
 
+void gst_init(int argc, char *argv[]) {
+  char tmpstr[4096];
 
+    gst_init(&argc, &argv);
+  
+  loop = g_main_loop_new(NULL, FALSE);
 
-bool talk() {
-  logger.info("talk activated");
+  sprintf(tmpstr,"alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! alsasink device=dmix:%d,0",tankSoundDevice,headsetDevice);
+  tank2headset = gst_parse_launch(tmpstr, &err);
 
-  char cmd[2048];
-  sprintf(cmd,"gst-launch-1.0 alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! queue2 ! alsasink device=dmix:%d,0", headsetDevice, tankSoundDevice);
+  sprintf(tmpstr,"alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! alsasink device=dmix:%d,0",headsetDevice,tankSoundDevice);
+  headset2tank = gst_parse_launch(tmpstr, &err);
 
-  thread(activateSound,string(cmd)).detach();
-  return true;
+  playTank2Headset();
+
+  logger.info("gst initialized");
 }
-
-bool listen() {
-  logger.info("listen activated");
-
-  char cmd[2048];
-  sprintf(cmd,"gst-launch-1.0 alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! queue2 ! alsasink device=dmix:%d,0", tankSoundDevice, headsetDevice);
-
-  thread(activateSound,string(cmd)).detach();
-
-  return false;
-}
-
 
 
 
@@ -1212,13 +1335,15 @@ void push2talk() {
     if (talkVolts>0.28) {
       // talking
       if (!talking) {
-        talking=talk();
+        playHeadset2Tank();
+        talking=true;
       }
 
     } else {
       // listening
       if (talking) {
-        talking=listen();
+        playTank2Headset();
+        talking=false;
       }
     }
 
@@ -1236,6 +1361,7 @@ int main(int argc, char **argv)
     return 1;
   }
 
+  gst_init(argc,argv);
 
   if ((pca9685fd=pca9685Setup(PCA9685_PIN_BASE, PCA9865_ADDRESS, PCA9865_CAP)) <= 0) {
 		printf("pca9685 setup failed!\n");
