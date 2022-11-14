@@ -832,7 +832,7 @@ void turretAspect() {
     if (abs(dutyCycle-lastCycle)>1 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
-      if (abs(turretCenter-dutyCycle)<20) {
+      if (abs(turretCenter-dutyCycle)<25) {
         setServoDutyCycle(turretAspectControlChannel, turretCenter);
       } else {
         setServoDutyCycle(turretAspectControlChannel, dutyCycle);
@@ -1164,7 +1164,6 @@ gboolean gst_bus_call (GstBus *bus, GstMessage *msg, gpointer data)
   switch (GST_MESSAGE_TYPE (msg)) {
 
     case GST_MESSAGE_EOS:
-      g_print ("End of stream\n");
       g_main_loop_quit (loop);
       break;
 
