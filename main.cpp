@@ -88,7 +88,7 @@ int  spiChannel = 0;
 bool spiOverride = false;
 int  spiSpeed = 500000;
 int  channelType = MCP3008_SINGLE;
-static volatile float mcp3008RefVolts = 5.0;
+static volatile float mcp3008RefVolts = 1.23;
 float mcp3008Volts[MCP3008_CHANNELS];
 int  txs0108_oe=6;
 
@@ -832,7 +832,7 @@ void turretAspect() {
     if (abs(dutyCycle-lastCycle)>1 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
-      if (abs(turretCenter-dutyCycle)<25) {
+      if (abs(turretCenter-dutyCycle)<10) {
         setServoDutyCycle(turretAspectControlChannel, turretCenter);
       } else {
         setServoDutyCycle(turretAspectControlChannel, dutyCycle);
@@ -1269,10 +1269,19 @@ void push2talk() {
     if (mcp3008Volts[hornChannel]<0.25) {
       playFile("/home/wryan/sounds/ahooga.mp3",0.3);
     }
+  } 
+}
 
+void knobtest() {
 
+  while (true) {
+    for (int i=0;i<MCP3008_CHANNELS;++i) {
+      printf("%d: %5.3f | ", i, mcp3008Volts[i]);
+    }
+    printf("\r");
+    delay(100);
   }
-  
+
 }
 
 int main(int argc, char **argv) {  
@@ -1330,19 +1339,10 @@ int main(int argc, char **argv) {
 		exit(2);
 	}
 
+   thread(readMCP3008Channels).detach();
+   usleep(100*1000);
 
-  thread(readMCP3008Channels).detach();
-
-  usleep(100*1000);
-  thread(push2talk).detach();
-
-  // while (true) {
-  //   for (int i=0;i<MCP3008_CHANNELS;++i) {
-  //     printf("%d: %5.3f | ", i, mcp3008Volts[i]);
-  //   }
-  //   printf("\r");
-  //   delay(100);
-  // }
+// knobtest
 
 
 /*    ADS11115    */
@@ -1360,10 +1360,11 @@ int main(int argc, char **argv) {
   if (doCalibration) {
     calibrate();
   }
+  
   readCalibration();
-
   thread(readAnalogChannels,0,a2dHandle1,gain).detach();
- 
+  thread(push2talk).detach();
+
 
   neopixel_setup();
 
