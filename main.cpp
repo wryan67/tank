@@ -52,6 +52,9 @@ Logger     logger("main");
  *************************************/
 GstElement *headset2tank;
 GstElement *tank2headset;
+GstElement *tank2headsetVolume;
+GstElement *headset2tankVolume;
+  
 GMainLoop *loop;
 GError *err = NULL;
 
@@ -856,20 +859,23 @@ void turretAspect() {
 
     dutyCycle = a3*b1+turretFullCCW;
 
+    int userAspect = getTurretAspect(dutyCycle);
+
 
 
     if (abs(dutyCycle-lastCycle)>4 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
-      if (abs(turretCenter-dutyCycle)<22) {
+      if (abs(userAspect)<16) {
         setServoDutyCycle(turretAspectControlChannel, turretCenter);
         if (turretAspectDegree!=turretCenter) {
           turretAspectDegree=turretCenter;
-          logger.info("turret aspect volts=%f; aspect: %d delta: %5.2f%%  mvAvg: %4.2f", volts, getTurretAspect(turretCenter), pDiff, MCP3008Data[turretAspectChannel].movingAverage);
+          logger.info("turret aspect volts=%f; aspect: %d delta: %5.2f%%  mvAvg: %4.2f", volts, userAspect, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
         }
       } else {
+        turretAspectDegree=dutyCycle;
         setServoDutyCycle(turretAspectControlChannel, dutyCycle);
-        logger.info("turret aspect volts=%f;  aspect: %d delta: %5.2f%% mvAvg: %4.2f", volts, getTurretAspect(dutyCycle), pDiff, MCP3008Data[turretAspectChannel].movingAverage);
+        logger.info("turret aspect volts=%f;  aspect: %d delta: %5.2f%% mvAvg: %4.2f", volts, userAspect, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
       }
 
 
@@ -928,6 +934,8 @@ void turretColor() {
   }
 }
 
+void muteTank(bool mute);
+
 directionType direction=undetermined;
 directionType trackAction=goStraight;
 int dd=-1;
@@ -974,8 +982,9 @@ void throttleControl() {
   if (yPercent==0 && xPercent==0) {
     if (dd!=1) {
       dd=1;
-      // logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-      //     xVolts, yVolts, xPercent, yPercent, "stop-100");
+      muteTank(false);
+      logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
+          xVolts, yVolts, xPercent, yPercent, "stop-100 dd=1");
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
       mcp23x17_digitalWrite(lTrackForward, LOW);
@@ -983,9 +992,10 @@ void throttleControl() {
       mcp23x17_digitalWrite(lTrackReverse, LOW);
       mcp23x17_digitalWrite(rTrackReverse, LOW);
     }
-  } else if (yPercent>abs(xPercent) || yPercent>=0.95) {  // move forward
+  } else if (yPercent>abs(xPercent) || yPercent>=0.95) {  
     int lp = (255-abs(yPercent*255));
     int rp = (255-abs(yPercent*255));
+
 
     if (xPercent<0) {
       lp+=abs(xPercent*255);
@@ -996,16 +1006,18 @@ void throttleControl() {
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, lp);
     wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, rp);
     if (dd!=2) {
-      // logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
-      //     xVolts, yVolts, xPercent, yPercent, 255-lp,255-rp, "move forward");
+      logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+          xVolts, yVolts, xPercent, yPercent, 255-lp,255-rp, "move forward dd=2");
 
       dd=2;
+      muteTank(true);
+
       mcp23x17_digitalWrite(lTrackForward, HIGH);
       mcp23x17_digitalWrite(rTrackForward, HIGH);
       mcp23x17_digitalWrite(lTrackReverse, LOW);
       mcp23x17_digitalWrite(rTrackReverse, LOW);
     }
-  } else if (yPercent<-abs(xPercent) || yPercent<=-0.95) { // move backward
+  } else if (yPercent<-abs(xPercent) || yPercent<=-0.95) { 
     int lp = (255-abs(yPercent*255));
     int rp = (255-abs(yPercent*255));
 
@@ -1019,8 +1031,9 @@ void throttleControl() {
 
     if (dd!=3) {
       dd=3;
+      muteTank(true);
       logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-          xVolts, yVolts, xPercent, yPercent, "move backward");
+          xVolts, yVolts, xPercent, yPercent, "move backward; dd=3");
       mcp23x17_digitalWrite(lTrackForward, LOW);
       mcp23x17_digitalWrite(rTrackForward, LOW);
       mcp23x17_digitalWrite(lTrackReverse, HIGH);
@@ -1036,8 +1049,9 @@ void throttleControl() {
 
       if (dd!=4) {
         dd=4;
-        // logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
-          // xVolts, yVolts, xPercent, yPercent, left,right, "turn right");
+        muteTank(true);
+        logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
+          xVolts, yVolts, xPercent, yPercent, left,right, "turn right; dd=4");
 
         mcp23x17_digitalWrite(lTrackForward, LOW);
         mcp23x17_digitalWrite(rTrackForward, HIGH);
@@ -1052,8 +1066,9 @@ void throttleControl() {
 
       if (dd!=5) {
         dd=5;
+        muteTank(true);
         logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> [%3d,%3d] %s", 
-          xVolts, yVolts, xPercent, yPercent, left,right, "turn left");
+          xVolts, yVolts, xPercent, yPercent, left,right, "turn left; dd=5");
 
         mcp23x17_digitalWrite(lTrackForward, HIGH);
         mcp23x17_digitalWrite(rTrackForward, LOW);
@@ -1064,8 +1079,9 @@ void throttleControl() {
   } else {
     if (dd!=6) {
       dd=6;
+      muteTank(false);
       logger.info("<%5.3f,%5.3f> <%5.2f,%5.2f> %s", 
-          xVolts, yVolts, xPercent, yPercent, "stop-200");
+          xVolts, yVolts, xPercent, yPercent, "stop-200; dd=6");
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
       wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
       mcp23x17_digitalWrite(lTrackForward, LOW);
@@ -1233,6 +1249,18 @@ void playHeadset2Tank() {
   stopAudio();
   gst_element_set_state(headset2tank, GST_STATE_PLAYING);
 }
+
+
+void muteTank(bool mute) {
+  float volume=(mute)?0.1:1.0;
+
+  if (!mute) {
+    usleep(500*1000);
+  }
+  g_object_set(tank2headsetVolume, "volume", volume, NULL); 
+}
+
+
 void playFile(const char *filename,float volume) {
   char tmpstr[4096];
   GstElement *dixie;
@@ -1241,13 +1269,16 @@ void playFile(const char *filename,float volume) {
   sprintf(tmpstr,"filesrc location=%s ! decodebin ! audioconvert ! audioresample ! volume volume=%f ! level ! alsasink device=dmix:%d,0",filename,volume,tankSoundDevice);
 
 
-  stopAudio();
+  playHeadset2Tank();
    
   dixie = gst_parse_launch(tmpstr, &err);
-  gst_element_set_state(dixie, GST_STATE_PLAYING);   bus = gst_element_get_bus(dixie);
+  gst_element_set_state(dixie, GST_STATE_PLAYING);  
+  bus = gst_element_get_bus(dixie);
   
   gst_bus_add_watch (bus, gst_bus_call, loop);
   g_main_loop_run(loop);
+gst_element_set_state(dixie, GST_STATE_NULL);  
+  
   playTank2Headset();
 }
 
@@ -1259,11 +1290,16 @@ void gst_init(int argc, char *argv[]) {
   
   loop = g_main_loop_new(NULL, FALSE);
 
-  sprintf(tmpstr,"alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! alsasink device=dmix:%d,0",tankSoundDevice,headsetDevice);
+  sprintf(tmpstr,"alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! volume volume=1.0 name=tank2headsetVolume ! alsasink device=dmix:%d,0",tankSoundDevice,headsetDevice);
   tank2headset = gst_parse_launch(tmpstr, &err);
 
-  sprintf(tmpstr,"alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! alsasink device=dmix:%d,0",headsetDevice,tankSoundDevice);
+  sprintf(tmpstr,"alsasrc device=hw:%d,0 ! audioconvert ! audioresample ! volume volume=1.0 name=headset2tankVolume ! alsasink device=dmix:%d,0",headsetDevice,tankSoundDevice);
   headset2tank = gst_parse_launch(tmpstr, &err);
+
+  tank2headsetVolume = gst_bin_get_by_name (GST_BIN(tank2headset), "tank2headsetVolume");
+  headset2tankVolume = gst_bin_get_by_name (GST_BIN(headset2tank), "headset2tankVolume");
+  g_assert(tank2headsetVolume);
+  g_assert(headset2tankVolume);
 
   playTank2Headset();
 
