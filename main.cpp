@@ -861,7 +861,7 @@ void turretAspect() {
     if (abs(dutyCycle-lastCycle)>4 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
-      if (abs(turretCenter-dutyCycle)<18) {
+      if (abs(turretCenter-dutyCycle)<22) {
         setServoDutyCycle(turretAspectControlChannel, turretCenter);
         if (turretAspectDegree!=turretCenter) {
           turretAspectDegree=turretCenter;
