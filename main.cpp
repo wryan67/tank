@@ -1236,18 +1236,37 @@ gboolean gst_bus_call (GstBus *bus, GstMessage *msg, gpointer data)
 
   return TRUE;
 }
+
+enum AUDIO_STATE { AUDIO_STOPPED, TANK2HEADSET, HEADSET2TANK, AUDIO_UNKNOWN };
+AUDIO_STATE audioState=AUDIO_UNKNOWN;
+
 void stopAudio() {
-  gst_element_set_state(headset2tank, GST_STATE_NULL); 
-  gst_element_set_state(tank2headset, GST_STATE_NULL); 
+  if (audioState!=AUDIO_STOPPED) {
+    audioState=AUDIO_STOPPED;
+
+    logger.info("stop audio");
+    gst_element_set_state(headset2tank, GST_STATE_NULL); 
+    gst_element_set_state(tank2headset, GST_STATE_NULL); 
+  }
 }
 
 void playTank2Headset() {
-  stopAudio();
-  gst_element_set_state(tank2headset, GST_STATE_PLAYING);
+  if (audioState!=TANK2HEADSET) {
+    audioState=TANK2HEADSET;
+
+    logger.info("play tank to headset");
+    gst_element_set_state(headset2tank, GST_STATE_NULL); 
+    gst_element_set_state(tank2headset, GST_STATE_PLAYING);
+  }
 }
 void playHeadset2Tank() {
-  stopAudio();
-  gst_element_set_state(headset2tank, GST_STATE_PLAYING);
+  if (audioState!=HEADSET2TANK) {
+    audioState=HEADSET2TANK;
+
+    logger.info("play headset to tank");
+    gst_element_set_state(tank2headset, GST_STATE_NULL); 
+    gst_element_set_state(headset2tank, GST_STATE_PLAYING);
+  }
 }
 
 
@@ -1268,18 +1287,18 @@ void playFile(const char *filename,float volume) {
 
   sprintf(tmpstr,"filesrc location=%s ! decodebin ! audioconvert ! audioresample ! volume volume=%f ! level ! alsasink device=dmix:%d,0",filename,volume,tankSoundDevice);
 
+  logger.info("play file: %s", filename);
 
   playHeadset2Tank();
-   
+  
   dixie = gst_parse_launch(tmpstr, &err);
   gst_element_set_state(dixie, GST_STATE_PLAYING);  
   bus = gst_element_get_bus(dixie);
   
   gst_bus_add_watch (bus, gst_bus_call, loop);
   g_main_loop_run(loop);
-gst_element_set_state(dixie, GST_STATE_NULL);  
+  gst_element_set_state(dixie, GST_STATE_NULL);  
   
-  playTank2Headset();
 }
 
 
@@ -1314,6 +1333,17 @@ void push2talk() {
   
   while (true) {
     usleep(10*1000);
+
+    if (MCP3008Data[hornChannel].volts>0.35) {
+      talking=true;
+      playFile("/home/wryan/sounds/dixie.mp3",0.3);
+      continue;
+    } else if (MCP3008Data[hornChannel].volts<0.25) {
+      talking=true;
+      playFile("/home/wryan/sounds/ahooga.mp3",0.3);
+      continue;
+    }
+
     float talkVolts=MCP3008Data[push2talkChannel].volts;
 
     // logger.info("push2talk volts: %5.2f",talkVolts);
@@ -1333,12 +1363,7 @@ void push2talk() {
       }
     }
 
-    if (MCP3008Data[hornChannel].volts>0.35) {
-      playFile("/home/wryan/sounds/dixie.mp3",0.3);
-    }
-    if (MCP3008Data[hornChannel].volts<0.25) {
-      playFile("/home/wryan/sounds/ahooga.mp3",0.3);
-    }
+
   } 
 }
 
