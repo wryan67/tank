@@ -1252,7 +1252,7 @@ void playHeadset2Tank() {
 
 
 void muteTank(bool mute) {
-  float volume=(mute)?1.0:1.0;
+  float volume=(mute)?0.1:1.0;
 
   if (!mute) {
     usleep(500*1000);
