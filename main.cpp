@@ -964,8 +964,9 @@ void throttleControl() {
   xPercent=(xPercent-0.5)*2;
   yPercent=(yPercent-0.5)*2;
 
-  if (abs(xPercent)<0.3) xPercent=0;
-  if (abs(yPercent)<0.3) yPercent=0;
+  float throttleIdle=0.3;
+  if (abs(xPercent)<throttleIdle) xPercent=0;
+  if (abs(yPercent)<throttleIdle) yPercent=0;
 
   // if (xPercent>0.95) xPercent=1;
   // if (yPercent<0.95) yPercent=-1;
