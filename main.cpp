@@ -89,7 +89,7 @@ bool spiOverride = false;
 int  spiSpeed = 500000;
 int  channelType = MCP3008_SINGLE;
 static volatile float mcp3008RefVolts = 1.23;
-float mcp3008Volts[MCP3008_CHANNELS];
+MCP3008DataType MCP3008Data[MCP3008_CHANNELS];
 int  txs0108_oe=6;
 
 int xChannel=7;
@@ -366,6 +366,7 @@ rangeType minTurret[turretChannelCount];
 int turretCenter=305;
 int turretFullCW=turretCenter-210;  // 515
 int turretFullCCW=turretCenter+210; //  95
+int turretAspectDegree;
 
 
 void getRange(rangeType range[], int xChannel, int yChannel, const char *message) {
@@ -395,7 +396,7 @@ void getRange(rangeType range[], int xChannel, int yChannel, const char *message
 
     int startTime=currentTimeMillis();
     for (int i=0;i<throttleChannelCount;++i) {
-      float v=mcp3008Volts[channels[i]];
+      float v=MCP3008Data[channels[i]].volts;
       if (v<0.1) {
         fprintf(stderr,"unable to detect joystick, is it on and paired?\n");
         exit(2);
@@ -790,16 +791,28 @@ void readAnalogChannels(int bank, int handle, int gain) {
   }
 }
 
+float percentDifference(float a, float b) {
+  return ( abs(a-b)/ ((a+b)/2) ) * 100.0;
+}
+
 void readMCP3008Channels() {
   logger.info("thread started--read mcp3008 channels");
   while (true) {
     for (int i=0;i<MCP3008_CHANNELS;++i) {
-      mcp3008Volts[i]=getMCP3008Volts(i);
+      MCP3008Data[i].volts=getMCP3008Volts(i);
+      if (MCP3008Data[i].window.size()>20) {
+        MCP3008Data[i].window.erase(MCP3008Data[i].window.begin());
+      }
+      MCP3008Data[i].window.push_back(MCP3008Data[i].volts);
+      float sum=0;
+      for (float volts : MCP3008Data[i].window) {
+        sum+=volts;
+      }
+      MCP3008Data[i].movingAverage=sum/MCP3008Data[i].window.size();
     }
     usleep(1000);
   }
 }
-
 
 
 
@@ -816,10 +829,16 @@ void turretAspect() {
       usleep(25*1000);
       continue;
     } else {
-      usleep(1000);
+      usleep(2*1000);
     }
 
-    float volts=mcp3008Volts[turretAspectChannel];
+    float volts=MCP3008Data[turretAspectChannel].volts;
+
+    float pDiff=abs(percentDifference(volts,MCP3008Data[turretAspectChannel].movingAverage));
+    if (pDiff>5) {
+      continue;
+    }
+
 
     float a1 = maxTurretAspectVoltage-minTurretAspectVoltage;
     float a2 = volts - minTurretAspectVoltage;
@@ -829,16 +848,22 @@ void turretAspect() {
     dutyCycle = a3*b1+turretFullCCW;
 
 
-    if (abs(dutyCycle-lastCycle)>1 && !fireInTheHole) {
+
+    if (abs(dutyCycle-lastCycle)>4 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
       if (abs(turretCenter-dutyCycle)<10) {
         setServoDutyCycle(turretAspectControlChannel, turretCenter);
+        if (turretAspectDegree!=turretCenter) {
+          turretAspectDegree=turretCenter;
+          logger.info("turret aspect volts=%f;  duty cycle: %5.2f  mvAvg: %4.2f", volts, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
+        }
       } else {
         setServoDutyCycle(turretAspectControlChannel, dutyCycle);
+        logger.info("turret aspect volts=%f;  duty cycle: %5.2f  mvAvg: %4.2f", volts, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
       }
-      float dutyCyclePercent=(float)dutyCycle/4096;
-      logger.info("turret aspect volts=%f;  duty cycle: %5.2f  fireInTheHole: %d", volts, dutyCyclePercent*100, fireInTheHole);
+
+
       movingTurret=false;
     }
   }
@@ -900,8 +925,8 @@ int dd=-1;
 
 void throttleControl() {
 //@@
-  float xVolts = mcp3008Volts[throttleChannels[xThrottle]];
-  float yVolts = mcp3008Volts[throttleChannels[yThrottle]];
+  float xVolts = MCP3008Data[throttleChannels[xThrottle]].volts;
+  float yVolts = MCP3008Data[throttleChannels[yThrottle]].volts;
 
   float xMin=minThrottle[xThrottle].avg;
   float xMax=maxThrottle[xThrottle].avg;
@@ -1049,7 +1074,7 @@ void throttleControlOld(long long &now) {
 
 
     for (int i=0;i<throttleChannelCount;++i) {
-      volts[i]=mcp3008Volts[throttleChannels[i]];
+      volts[i]=MCP3008Data[throttleChannels[i]].volts;
     }
 
     // printf("%lld %12.6f %12.6f %12.6f %12.6f\r", 
@@ -1244,7 +1269,7 @@ void push2talk() {
   
   while (true) {
     usleep(10*1000);
-    float talkVolts=mcp3008Volts[push2talkChannel];
+    float talkVolts=MCP3008Data[push2talkChannel].volts;
 
     // logger.info("push2talk volts: %5.2f",talkVolts);
 
@@ -1263,10 +1288,10 @@ void push2talk() {
       }
     }
 
-    if (mcp3008Volts[hornChannel]>0.35) {
+    if (MCP3008Data[hornChannel].volts>0.35) {
       playFile("/home/wryan/sounds/dixie.mp3",0.3);
     }
-    if (mcp3008Volts[hornChannel]<0.25) {
+    if (MCP3008Data[hornChannel].volts<0.25) {
       playFile("/home/wryan/sounds/ahooga.mp3",0.3);
     }
   } 
@@ -1276,7 +1301,7 @@ void knobtest() {
 
   while (true) {
     for (int i=0;i<MCP3008_CHANNELS;++i) {
-      printf("%d: %5.3f | ", i, mcp3008Volts[i]);
+      printf("%d: %5.3f | ", i, MCP3008Data[i].volts);
     }
     printf("\r");
     delay(100);
@@ -1372,7 +1397,7 @@ int main(int argc, char **argv) {
   long c=0;
   int  loop=0;
 
-  while (mcp3008Volts[yChannel]<0.1) {
+  while (MCP3008Data[yChannel].volts<0.1) {
     if (++c%10==0) ++loop;
  
     pca9635SetDutyCycle(pca9635Handle, joystickAlertLEDChannel, 50*(loop%2));
@@ -1397,7 +1422,7 @@ int main(int argc, char **argv) {
       batteryAlert();
     }
 
-    float fireVolts=mcp3008Volts[fireChannel];
+    float fireVolts=MCP3008Data[fireChannel].volts;
 
     if (fireVolts>0.32 && !fireInTheHole) {
       logger.info("fireVolts=%12.6f", fireVolts);
