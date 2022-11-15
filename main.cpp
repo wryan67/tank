@@ -964,8 +964,8 @@ void throttleControl() {
   xPercent=(xPercent-0.5)*2;
   yPercent=(yPercent-0.5)*2;
 
-  if (abs(xPercent)<0.08) xPercent=0;
-  if (abs(yPercent)<0.08) yPercent=0;
+  if (abs(xPercent)<0.3) xPercent=0;
+  if (abs(yPercent)<0.3) yPercent=0;
 
   // if (xPercent>0.95) xPercent=1;
   // if (yPercent<0.95) yPercent=-1;
@@ -1107,7 +1107,7 @@ void throttleControlOld(long long &now) {
 
 
     if (volts[yThrottle]>0.1) {
-      if (volts[yThrottle]<yMiddle-yResolution) {         // move forward
+      if (volts[yThrottle]<yMiddle-(yResolution*2)) {         // move forward
         if (direction != forwardMotion) {
           direction=forwardMotion;
           isMotorOn=true;
@@ -1122,7 +1122,7 @@ void throttleControlOld(long long &now) {
         }
         // allStop();
         // exit(2);
-      } else if (volts[yThrottle]>yMiddle+yResolution) {  // move backward
+      } else if (volts[yThrottle]>yMiddle+(yResolution*2)) {  // move backward
         if (direction != reverseMotion) {
           direction = reverseMotion;
           isMotorOn=true;
@@ -1147,7 +1147,7 @@ void throttleControlOld(long long &now) {
         }
       }
 
-      if (volts[xThrottle]>xMiddle+xResolution) {         // turn right
+      if (volts[xThrottle]>xMiddle+(xResolution*2)) {         // turn right
         if (trackAction!=turnRight) {
           trackAction=turnRight;
           const char *notes = "turn right";
@@ -1156,7 +1156,7 @@ void throttleControlOld(long long &now) {
           wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 0);
           wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 255);
         }
-      } else if (volts[xThrottle]<xMiddle-xResolution) {  // turn left
+      } else if (volts[xThrottle]<xMiddle-(xResolution*2)) {  // turn left
         if (trackAction!=turnLeft) {
           trackAction=turnLeft;
           const char *notes = "turn left";
@@ -1165,9 +1165,6 @@ void throttleControlOld(long long &now) {
           wiringPiI2CWriteReg8(pca9635Handle, 0x02 + lTrackChannel, 255);
           wiringPiI2CWriteReg8(pca9635Handle, 0x02 + rTrackChannel, 0);
 
-          printf("volts[x]: %6.4f \n",volts[xThrottle]);
-          printf("xMiddle:  %6.4f %6.4f\n",xMiddle, xResolution);
-          printf("xTarget:  %6.4f \n",xMiddle-xResolution);
           // exit(2);
         }
       } else {                                            // go straight
