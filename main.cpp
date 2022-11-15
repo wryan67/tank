@@ -815,9 +815,12 @@ void readMCP3008Channels() {
 }
 
 int getTurretAspect(int dutyCycle) {
-  float dutyCyclePercent=(float)dutyCycle/4096;
 
-  return dutyCyclePercent * 180;
+  float b1 = turretFullCW-turretFullCCW+1;
+  float p  = dutyCycle - turretFullCCW;
+  float a3 = p / b1;
+
+  return a3 * 180 - 90;
 
 }
 
@@ -858,7 +861,7 @@ void turretAspect() {
     if (abs(dutyCycle-lastCycle)>4 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
-      if (abs(turretCenter-dutyCycle)<15) {
+      if (abs(turretCenter-dutyCycle)<18) {
         setServoDutyCycle(turretAspectControlChannel, turretCenter);
         if (turretAspectDegree!=turretCenter) {
           turretAspectDegree=turretCenter;
