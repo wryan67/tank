@@ -1330,7 +1330,7 @@ void startPianobar() {
   char tmpstr[2048];
   char    line[256];
 
-  sprintf(tmpstr,"ksh 'pianobar > /home/wryan/logs/pianobar.log 2>&1 & echo $!'");
+  sprintf(tmpstr,"ksh 'pianobar.sh > /home/wryan/logs/pianobar.log 2>&1 & echo $!'");
   FILE *fp=popen(tmpstr,"r");
 
   fgets(line,sizeof(line),fp);
