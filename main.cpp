@@ -366,7 +366,8 @@ rangeType idleTurret[turretChannelCount];
 rangeType maxTurret[turretChannelCount];
 rangeType minTurret[turretChannelCount];
 
-int turretCenter=305;
+// int turretCenter=305;
+int turretCenter=307;
 int turretFullCW=turretCenter-210;  // 515
 int turretFullCCW=turretCenter+210; //  95
 int turretAspectDegree;
