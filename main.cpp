@@ -1324,7 +1324,33 @@ void gst_init(int argc, char *argv[]) {
   logger.info("gst initialized");
 }
 
+int pianobarPid=0;
 
+void startPianobar() {
+  char tmpstr[2048];
+  char    line[256];
+
+  sprintf(tmpstr,"ksh 'pianobar > /home/wryan/logs/pianobar.log 2>&1 & echo $!'");
+  FILE *fp=popen(tmpstr,"r");
+
+  fgets(line,sizeof(line),fp);
+  pianobarPid=atoi(line);  
+  fclose(fp);
+
+  logger.info("pianobar pid = %d",pianobarPid);
+}
+
+void killPianobar() {
+  if (pianobarPid<=1) {
+    return;
+  }
+  logger.info("kill pianobar");
+  char cmd[4096];
+  sprintf(cmd,"kill %d",pianobarPid);
+  pianobarPid=0;
+  thread(system,cmd).detach();
+  logger.info("kill pianobar done");
+}
 
 void push2talk() {
   logger.info("push2talk activated");
@@ -1342,6 +1368,21 @@ void push2talk() {
       playFile("/home/wryan/sounds/ahooga.mp3",0.3);
       continue;
     }
+
+    if (MCP3008Data[fireChannel].volts<0.25) {
+      if (!pianobarPid)  {
+        talking=true;
+        pianobarPid=1;
+        playHeadset2Tank();
+        usleep(500*1000);
+        startPianobar();
+
+      }
+      continue;
+    } else if (pianobarPid>1) {
+      killPianobar();
+    }
+
 
     float talkVolts=MCP3008Data[push2talkChannel].volts;
 
