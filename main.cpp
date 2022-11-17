@@ -848,7 +848,7 @@ void turretAspect() {
     float volts=MCP3008Data[turretAspectChannel].volts;
 
     float pDiff=abs(percentDifference(volts,MCP3008Data[turretAspectChannel].movingAverage));
-    if (pDiff>4) {
+    if (pDiff>3.4) {
       continue;
     }
 
@@ -864,10 +864,10 @@ void turretAspect() {
 
 
 
-    if (abs(dutyCycle-lastCycle)>4 && !fireInTheHole) {
+    if (abs(dutyCycle-lastCycle)>1 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
-      if (abs(userAspect)<16) {
+      if (abs(userAspect)<13) {
         setServoDutyCycle(turretAspectControlChannel, turretCenter);
         if (turretAspectDegree!=turretCenter) {
           turretAspectDegree=turretCenter;
