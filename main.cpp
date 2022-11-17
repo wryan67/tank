@@ -848,7 +848,7 @@ void turretAspect() {
     float volts=MCP3008Data[turretAspectChannel].volts;
 
     float pDiff=abs(percentDifference(volts,MCP3008Data[turretAspectChannel].movingAverage));
-    if (pDiff>5) {
+    if (pDiff>4) {
       continue;
     }
 
@@ -871,12 +871,12 @@ void turretAspect() {
         setServoDutyCycle(turretAspectControlChannel, turretCenter);
         if (turretAspectDegree!=turretCenter) {
           turretAspectDegree=turretCenter;
-          logger.info("turret aspect volts=%f; aspect: %d delta: %5.2f%%  mvAvg: %4.2f", volts, userAspect, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
+          logger.info("turret aspect volts=%f; aspect+: %d delta: %5.2f%%  mvAvg: %4.2f", volts, userAspect, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
         }
       } else {
         turretAspectDegree=dutyCycle;
         setServoDutyCycle(turretAspectControlChannel, dutyCycle);
-        logger.info("turret aspect volts=%f;  aspect: %d delta: %5.2f%% mvAvg: %4.2f", volts, userAspect, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
+        logger.info("turret aspect volts=%f; aspect-: %d delta: %5.2f%% mvAvg: %4.2f", volts, userAspect, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
       }
 
 
