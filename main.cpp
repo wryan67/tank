@@ -368,8 +368,8 @@ rangeType minTurret[turretChannelCount];
 
 // int turretCenter=305;
 int turretCenter=307;
-int turretFullCW=turretCenter-210;  // 515
-int turretFullCCW=turretCenter+210; //  95
+int turretFullCW=505;  // 515
+int turretFullCCW=100; //  95
 int turretAspectDegree;
 
 
@@ -828,6 +828,22 @@ int getTurretAspect(int dutyCycle) {
 
 }
 
+void logTurretAspect(float &volts, int &userAspect, bool centered, float &pDiff, float &movingAverage) {
+
+    char aspectIndicator;
+
+    if (centered) {
+      aspectIndicator = '.';
+    } else if (userAspect>0) {
+      aspectIndicator = '+';
+    } else {
+      aspectIndicator = '-';
+
+    }
+
+    logger.info("turret aspect volts=%6.4f; aspect%c: %3d delta: %5.2f%%  mvAvg: %4.2f", 
+              volts, aspectIndicator, abs(userAspect), pDiff, movingAverage);
+}
 
 void turretAspect() {
   int dutyCycle=turretCenter;
@@ -853,10 +869,10 @@ void turretAspect() {
     }
 
 
-    float a1 = maxTurretAspectVoltage-minTurretAspectVoltage;
-    float a2 = volts - minTurretAspectVoltage;
-    float a3 = a2/a1;
-    float b1 = turretFullCW-turretFullCCW+1;
+    float a1 = maxTurretAspectVoltage-minTurretAspectVoltage;  // volts range
+    float a2 = volts - minTurretAspectVoltage;                 // floor adjustment
+    float a3 = a2/a1;                                          // percent aspect
+    float b1 = turretFullCW-turretFullCCW+1;                   // duty cycle range
 
     dutyCycle = a3*b1+turretFullCCW;
 
@@ -867,16 +883,16 @@ void turretAspect() {
     if (abs(dutyCycle-lastCycle)>1 && !fireInTheHole) {
       movingTurret=true;
       lastCycle=dutyCycle;
-      if (abs(userAspect)<13) {
+      if (abs(userAspect)<10) {
         setServoDutyCycle(turretAspectControlChannel, turretCenter);
         if (turretAspectDegree!=turretCenter) {
           turretAspectDegree=turretCenter;
-          logger.info("turret aspect volts=%f; aspect+: %d delta: %5.2f%%  mvAvg: %4.2f", volts, userAspect, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
+          logTurretAspect(volts, userAspect, true, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
         }
       } else {
         turretAspectDegree=dutyCycle;
         setServoDutyCycle(turretAspectControlChannel, dutyCycle);
-        logger.info("turret aspect volts=%f; aspect-: %d delta: %5.2f%% mvAvg: %4.2f", volts, userAspect, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
+          logTurretAspect(volts, userAspect, false, pDiff, MCP3008Data[turretAspectChannel].movingAverage);
       }
 
 
